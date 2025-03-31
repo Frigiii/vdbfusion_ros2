@@ -1,0 +1,5 @@
+<library path="libvdbfusion_node">
+    <class type="vdbfusion::vdbfusion_node" base_class_type="rclcpp::Node">
+        <description>ROS2 Node for VDBFusion library</description>
+    </class>
+</library>

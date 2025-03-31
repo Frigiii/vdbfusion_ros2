@@ -1,0 +1,20 @@
+vdbfusion_node:
+  ros__parameters:
+    voxel_size: 0.02
+    truncation_distance: 0.06
+    space_carving: false
+
+    preprocess: true
+    apply_pose: true
+    min_range: 0.0
+    max_range: 3.0
+
+    fill_holes: false
+    min_weight: 0.0
+
+    timestamp_tolerance_ns: 10000
+    static_frame_id: world
+
+    publish_interval_ms: 200
+    publish_tsdf: true
+    publish_mesh: true

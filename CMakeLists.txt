@@ -1,67 +1,114 @@
-# MIT License
-#
-# # Copyright (c) 2022 Saurabh Gupta, Ignacio Vizzo, Cyrill Stachniss, University of Bonn
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+cmake_minimum_required(VERSION 3.8)
+project(vdbfusion_ros2)
 
-cmake_minimum_required(VERSION 3.0.2)
-project(vdbfusion_ros)
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-# System dependencies are found with CMake's conventions
-include(GNUInstallDirs)
-list(APPEND CMAKE_MODULE_PATH "/usr/local/lib/cmake/OpenVDB")
-find_package(OpenVDB REQUIRED)
-find_package(VDBFusion REQUIRED)
+# find dependencies
+find_package(openvdb_vendor REQUIRED)
 
-find_package(
-  catkin REQUIRED
-  COMPONENTS rospy
-             roscpp
-             tf2_ros
-             tf2_sensor_msgs
-             std_msgs
-             geometry_msgs
-             sensor_msgs
-             message_generation)
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_sensor_msgs REQUIRED)
 
-add_service_files(FILES save_vdb_volume.srv)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-generate_messages()
+# builds the vdbfusion library from source
+add_library(
+  vdbfusion_library
+  src/vdbfusion/VDBVolume.cpp
+  src/vdbfusion/MarchingCubes.cpp
+)
 
-catkin_package(
-  INCLUDE_DIRS
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/vdbfusion_ros/
-  LIBRARIES
-  CATKIN_DEPENDS
-  roscpp
-  rospy
-  tf2_ros
-  tf2_sensor_msgs
+target_include_directories(
+  vdbfusion_library
+  PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${OpenVDB_LIBRARIES}
+)
+
+target_link_libraries(
+  vdbfusion_library
+  ${OpenVDB_LIBRARIES}
+)
+
+install (
+  TARGETS vdbfusion_library
+  EXPORT export_vdbfusion_library
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+# build the vdbfusion node as a shared library 
+add_library(
+  vdbfusion_node
+  SHARED
+  src/vdbfusion_ros2/vdbfusion_node.cpp
+)
+
+target_include_directories(
+  vdbfusion_node
+  PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+
+target_link_libraries(
+  vdbfusion_node
+  vdbfusion_library
+)
+
+ament_target_dependencies(
+  vdbfusion_node
+  rclcpp
+  rclcpp_components
   std_msgs
-  geometry_msgs
   sensor_msgs
-  message_runtime)
+  geometry_msgs
+  visualization_msgs
+  tf2
+  tf2_ros
+  tf2_sensor_msgs)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/vdbfusion_ros)
+# install the vdbfusion node as a shared library
+rclcpp_components_register_nodes(vdbfusion_node "vdbfusion::vdbfusion_node")
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src)
+install(
+  TARGETS vdbfusion_node
+  EXPORT export_vdbfusion_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
 
-include(3rdparty/find_dependencies.cmake)
+install(
+    FILES plugin.xml
+    DESTINATION share/${PROJECT_NAME}
+)
+
+install(DIRECTORY launch config
+        DESTINATION share/${PROJECT_NAME})
+
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # comment the line when a copyright and license is added to all source files
+  set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # comment the line when this package is in a git repo and when
+  # a copyright and license is added to all source files
+  set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
+ament_package()

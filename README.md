@@ -1,6 +1,19 @@
-# ROS-VDBFusion: Flexible and Efficient TSDF Integration
+# ROS2-VDBFusion: Flexible and Efficient TSDF Integration
 
-A ROS C++ wrapper to the [vdbfusion](https://github.com/PRBonn/vdbfusion) library for flexible and efficient TSDF Integration
+A standalone ROS2 C++ package that wraps the [vdbfusion](https://github.com/PRBonn/vdbfusion) library for flexible and efficient TSDF Integration.
+
+Modified from the original ROS1 library [vdbfusion_ros](https://github.com/PRBonn/vdbfusion) and main [vdbfusion](https://github.com/PRBonn/vdbfusion) library.
+
+## List of modifications
+1. Added the original vdbfusion library to this package, allowing for the package to be built using colcon
+2. Build the original library with ROS pre-installed OpenVDB [PRBonn/vdbfusion#43](https://github.com/PRBonn/vdbfusion/pull/43)
+3. Ported the original ROS1 C++ wrapper to ROS2, with the following changes:
+    - Updated the helper functions for converting and preprocessing PointCloud2 messages
+    - Removed the vdbfusion::Transform class, the node now relies on tf2 natively
+    - Removed the saveVDBVolume service
+    - Added parameters and functions to visualize the TSDF integration using RViz with the visualization_markers package
+    - Rewrote the node and launch files to work as a ROS2 component node
+4. Ported the launch file to ROS2, using composable nodes together with depth image proc to interface the original library with depth image streams
 
 ## Installation
 
@@ -8,79 +21,83 @@ A ROS C++ wrapper to the [vdbfusion](https://github.com/PRBonn/vdbfusion) librar
 
 ```sh
 # Install OpenVDB dependencies
-sudo apt-get update && apt-get install --no-install-recommends -y \
+sudo apt update && apt install --no-install-recommends -y \
     libblosc-dev \
     libboost-iostreams-dev \
     libboost-system-dev \
     libboost-system-dev \
     libeigen3-dev
 
-# Install OpenVDB from source
-git clone --depth 1 https://github.com/nachovizzo/openvdb.git -b nacho/vdbfusion && cd openvdb
-mkdir build && cd build && cmake  -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DUSE_ZLIB=OFF .. &&  sudo make -j$(nproc) all install
+# Install OpenVDB from openvdb-vendor
+sudo apt update && sudo apt install --no-install-recommends -y ros-humble-openvdb-vendor
 ```
 
 ### VDBfusion
 
-```sh
-git clone --depth 1 https://github.com/PRBonn/vdbfusion.git && cd vdbfusion
-mkdir build && cd build && cmake .. &&  sudo make -j$(nproc) all install
-```
+*VDBFusion is now built alongside the ROS2 package using colcon*
 
 ### ROS
 
-For now only [ROS Noetic](http://wiki.ros.org/noetic) is supported.  
+For now only [ROS Humble](https://docs.ros.org/en/humble/index.html) has been tested.  
 
-As an extra dependency install: `sudo apt install ros-noetic-tf2-sensor-msgs`.
+As an extra dependency install: `sudo apt install ros-humble-tf2-sensor-msgs`.
 On your catkin workspace, clone the vdbfusion_ros:
 
 ```sh
-cd catkin_ws/src/
+cd colcon_ws/src/
 git clone https://github.com/PRBonn/vdbfusion_ros.git
-catkin build
+colcon build 
 ```
 
 ## Usage
 
 ### Configuration
 
-1. Create a config file compatible with your dataset and desired tsdf integration parameters using this [template configuration](/config/template.yaml)
-2. The PointClouds should be a `sensor_msgs/PointCloud2` message published on a custom topic name which needs to be specified in the config file
-3. The Transforms should be either a `tf2_msgs/TFMessage` or a `geometry_msgs/TransformStamped`. See the [template configuration](config/template.yaml) for more details
-4. The data can be published either through a rosbag file or directly from another ros node
+1. Create a config file compatible with your dataset and desired tsdf integration parameters using this [default configuration](/config/default.yaml)
+2. Create a launch file using the [default launch file](/launch/vdbfusion_ros2.launch.py) the depth image topic name for the depth-image-proc node can be changed
+```Python
+    remappings=[
+        ('image_rect', '/camera/depth/image_raw'), # change the /camera/depth/image_raw to your depth image topic
+        ('camera_info', '/camera/depth/camera_info'), # change the /camera/depth/camera_info to your depth camera info topic
+        ('points', '/input/pointcloud') 
+    ]
+```
+3. The data can be published either through a rosbag file or directly from another ros node
 
 ### Launch
 
 ```sh
-roslaunch vdbfusion_ros vdbfusion.launch config_file_name:=<insert config file name here> path_to_rosbag_file:=<insert path to rosbag file here>
+ros2 launch vdbfusion_ros2 vdbfusion_ros2.launch.py
 ```
 
-### Save the VDB Grid and Extract Triangle Mesh
+### Visualize the VDB grid and mesh using Rviz
+By default, the TSDF grid is published to /output/tsdf and the mesh is published to /output/mesh. This was tested on the [SceneNN dataset](https://github.com/hkust-vgd/scenenn).
 
-```sh
-rosservice call /save_vdb_volume "path: '<insert filename and path to save the volume and mesh>'"    
-```
+Below images show Sequence 78 with voxel size set to 0.02 and truncation distance set to 0.06. 
+
+![alt text](images/scenenn_78_mesh.png)
+![alt text](images/scenenn_78_tsdf.png)
+
+The mesh and tsdf marker colours can be changed in the [vdbfusion_node.cpp](/src/vdbfusion_ros2/vdbfusion_node.cpp) file in the vdbVolumeToCubeMarker() and vdbVolumeToMeshMarker() functions.
 
 ## Dataset Examples
 
-Download the dataset rosbag files from the respective links
+Download the dataset rosbag files from the respective links and modify the launch and config files.
 
 ### [TU Munich RGB-D SLAM Dataset and Benchmark - FR1DESK2](https://vision.in.tum.de/data/datasets/rgbd-dataset)
 
-- Use the sample [config file](config/FR2Desk2.yaml) provided for this dataset
+<!-- - Use the sample [config file](config/FR2Desk2.yaml) provided for this dataset -->
 
 ### [ETH Zurich ASL: Cow and Lady RGBD Dataset](https://projects.asl.ethz.ch/datasets/doku.php?id=iros2017)
 
-- Use the sample [config file](config/CowAndLady.yaml) provided for this dataset
+<!-- - Use the sample [config file](config/CowAndLady.yaml) provided for this dataset -->
 
 ### [KITTI Dataset](http://www.cvlibs.net/datasets/kitti/raw_data.php)
 
-- Convert the dataset into a rosbag file using [kitti2bag](https://github.com/tomas789/kitti2bag)
-- Use the sample [config file](config/KITTI.yaml) provided for this dataset
+<!-- - Convert the dataset into a rosbag file using [kitti2bag](https://github.com/tomas789/kitti2bag)
+- Use the sample [config file](config/KITTI.yaml) provided for this dataset -->
 
-Run the [launch](README.md#launch) command providing config file and rosbag path corresponding to the dataset.
-
-Use the [rosservice](README.md#save-the-vdb-grid-and-extract-triangle-mesh) to save the VDB volume and mesh
+Run the [launch](README.md#launch) command with your custom launch file and use ```ros2 bag play [PATH_TO_YOUR_ROSBAG]``` to start your ros2bag
 
 ## Citation
 
@@ -100,9 +117,3 @@ If you use this library for any academic work, please cite the original [paper](
   doi            = {10.3390/s22031296}
 }
 ```
-
-## Others ROS wrappers around VDBFusion
-
-- [vdbfusion_mapping](https://github.com/Kin-Zhang/vdbfusion_mapping): originated to solve [transformation issues](https://github.com/PRBonn/vdbfusion_ros/issues/2) and with color support ![image](https://user-images.githubusercontent.com/35365764/200626528-a657a0e6-2fca-48d7-8b34-d8619b6f33e8.png)
-- [vdbfusion_mapping_docker](https://github.com/nachovizzo/vdbfusion_mapping). Same as above, but running in a dockerized enviornment
-
