@@ -250,7 +250,7 @@ int main(int argc, char** argv) {
   auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
   auto node = std::make_shared<vdbfusion::vdbfusion_node>(options);
   executor->add_node(node);
-  RCLCPP_INFO(node->get_logger(), "VDBfusion_node is running...");
+  RCLCPP_INFO(node->get_logger(), "VDBfusion_node isa running...");
   // Spin the node using the executor
   executor->spin();
   return 0;
