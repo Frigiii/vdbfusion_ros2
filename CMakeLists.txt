@@ -19,6 +19,9 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_sensor_msgs REQUIRED)
 
+find_package(OpenVDB REQUIRED)
+find_package(Eigen3 REQUIRED)
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # builds the vdbfusion library from source
@@ -27,13 +30,13 @@ add_library(
   src/vdbfusion/VDBVolume.cpp
   src/vdbfusion/MarchingCubes.cpp
 )
-
 target_include_directories(
   vdbfusion_library
   PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
-  ${OpenVDB_LIBRARIES}
+  ${OpenVDB_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
 target_link_libraries(

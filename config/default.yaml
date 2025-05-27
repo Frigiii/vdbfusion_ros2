@@ -1,7 +1,7 @@
 vdbfusion_node:
   ros__parameters:
-    voxel_size: 0.02
-    truncation_distance: 0.06
+    voxel_size: 0.05
+    truncation_distance: 2.0
     space_carving: false
 
     preprocess: true
@@ -13,7 +13,7 @@ vdbfusion_node:
     min_weight: 0.0
 
     timestamp_tolerance_ns: 10000
-    static_frame_id: world
+    static_frame_id: SHOVEL
 
     publish_interval_ms: 200
     publish_tsdf: true

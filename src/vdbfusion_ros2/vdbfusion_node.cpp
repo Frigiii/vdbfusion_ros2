@@ -138,7 +138,7 @@ vdbfusion_node::vdbfusion_node(const rclcpp::NodeOptions& options)
 
     // subscribers
     pointcloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-        "input/pointcloud", rclcpp::QoS(rclcpp::KeepLast(10)).best_effort(),
+        "trimesh_self_filter/lidar_boom", rclcpp::QoS(rclcpp::KeepLast(10)).reliable(),
         std::bind(&vdbfusion_node::integratePointCloudCB, this, std::placeholders::_1));
 
     // publishers
@@ -232,7 +232,7 @@ void vdbfusion_node::integratePointCloudCB(const sensor_msgs::msg::PointCloud2::
         const auto& y = transform.transform.translation.y;
         const auto& z = transform.transform.translation.z;
         auto origin = Eigen::Vector3d{x, y, z};
-        vdb_volume_->Integrate(scan, origin, [](float /* unuused*/) { return 1.0; });
+        vdb_volume_->Integrate(scan, origin, [](float /* unuused*/) { return 0.2; });
     }
 }
 
