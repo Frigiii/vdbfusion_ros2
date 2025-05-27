@@ -6,25 +6,31 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 # find dependencies
-find_package(openvdb_vendor REQUIRED)
-
 find_package(ament_cmake REQUIRED)
-find_package(rclcpp REQUIRED)
-find_package(rclcpp_components REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(visualization_msgs REQUIRED)
-find_package(tf2 REQUIRED)
-find_package(tf2_ros REQUIRED)
-find_package(tf2_sensor_msgs REQUIRED)
 
-find_package(OpenVDB REQUIRED)
-find_package(Eigen3 REQUIRED)
+set(THIS_PACKAGE_INCLUDE_DEPENDS
+  openvdb_vendor
+  rclcpp
+  rclcpp_components
+  std_msgs
+  sensor_msgs
+  geometry_msgs
+  visualization_msgs
+  tf2
+  tf2_ros
+  tf2_sensor_msgs
+  OpenVDB
+  Eigen3
+  TBB
+)
+
+foreach(dep ${THIS_PACKAGE_INCLUDE_DEPENDS})
+  find_package(${dep} REQUIRED)
+endforeach()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-# builds the vdbfusion library from source
+# build the vdbfusion library from source
 add_library(
   vdbfusion_library
   src/vdbfusion/VDBVolume.cpp
@@ -54,8 +60,40 @@ install (
 
 # build the vdbfusion node as a shared library 
 add_library(
-  vdbfusion_node
+  vdbfusion_node_lib
   SHARED
+  src/vdbfusion_ros2/vdbfusion_node.cpp
+)
+
+target_include_directories(
+  vdbfusion_node_lib
+  PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+
+target_link_libraries(
+  vdbfusion_node_lib
+  vdbfusion_library
+)
+
+ament_target_dependencies(
+  vdbfusion_node_lib
+  ${THIS_PACKAGE_INCLUDE_DEPENDS})
+
+# install the vdbfusion node as a shared library
+rclcpp_components_register_nodes(vdbfusion_node_lib "vdbfusion::vdbfusion_node")
+
+install(
+  TARGETS vdbfusion_node_lib
+  EXPORT export_vdbfusion_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+# build the vdbfusion node as an executable
+add_executable(
+  vdbfusion_node
   src/vdbfusion_ros2/vdbfusion_node.cpp
 )
 
@@ -68,29 +106,17 @@ target_include_directories(
 target_link_libraries(
   vdbfusion_node
   vdbfusion_library
+  TBB::tbb
 )
 
 ament_target_dependencies(
   vdbfusion_node
-  rclcpp
-  rclcpp_components
-  std_msgs
-  sensor_msgs
-  geometry_msgs
-  visualization_msgs
-  tf2
-  tf2_ros
-  tf2_sensor_msgs)
+  ${THIS_PACKAGE_INCLUDE_DEPENDS})
 
-# install the vdbfusion node as a shared library
-rclcpp_components_register_nodes(vdbfusion_node "vdbfusion::vdbfusion_node")
-
+# install the vdbfusion node as an executable
 install(
   TARGETS vdbfusion_node
-  EXPORT export_vdbfusion_node
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 install(
