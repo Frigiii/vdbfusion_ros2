@@ -35,8 +35,9 @@ class vdbfusion_node : public rclcpp::Node {
   std::shared_ptr<VDBVolume> vdb_volume_;
 
   // subscribers
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr
-      pointcloud_sub_;
+  std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr>
+      pointcloud_subs_;
+  std::vector<rclcpp::CallbackGroup::SharedPtr> pointcloud_callback_groups_;
 
   // timers
   rclcpp::TimerBase::SharedPtr tsdf_pub_timer_;
@@ -61,6 +62,8 @@ class vdbfusion_node : public rclcpp::Node {
   bool fill_holes_;
   float min_weight_;
 
+  std::vector<std::string> pointcloud_inputs_;
+  std::string output_topic_;
   bool use_sim_time_;
   builtin_interfaces::msg::Time latest_pc_header_stamp_;
 };

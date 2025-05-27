@@ -1,11 +1,12 @@
 #include <Eigen/Core>
-#include <vector>
-
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
+#include <vector>
 
+#include "vdbfusion/VDBVolume.h"
+#include "visualization_msgs/msg/marker.hpp"
 
 namespace {
 // Directly convert sensor_msgs/msg/PointCloud2 to std::vector<Eigen::Vector3>

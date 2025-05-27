@@ -1,8 +1,13 @@
 vdbfusion_node:
   ros__parameters:
-    voxel_size: 0.05
+    pointcloud_inputs:
+      - "/trimesh_self_filter/lidar_front_left"
+      - "/trimesh_self_filter/lidar_boom"
+    output_topic: "vdbfusion"
+
+    voxel_size: 0.1
     truncation_distance: 2.0
-    space_carving: false
+    space_carving: true
 
     preprocess: true
     apply_pose: true

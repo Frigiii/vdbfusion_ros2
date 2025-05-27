@@ -31,9 +31,8 @@
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 #include <vector>
 
-#include "vdbfusion_ros2/vdbfusion_node.hpp"
 #include "vdbfusion_ros2/utils.hpp"
-
+#include "vdbfusion_ros2/vdbfusion_node.hpp"
 
 namespace vdbfusion {
 vdbfusion_node::vdbfusion_node(const rclcpp::NodeOptions& options)
@@ -47,18 +46,30 @@ vdbfusion_node::vdbfusion_node(const rclcpp::NodeOptions& options)
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-  // subscribers
-  pointcloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-      "trimesh_self_filter/lidar_boom",
-      rclcpp::QoS(rclcpp::KeepLast(10)).reliable(),
-      std::bind(&vdbfusion_node::integratePointCloudCB, this,
-                std::placeholders::_1));
+  // Create a callback group for each subscription to allow them to run in
+  // separate threads. This way we have a thread for each point cloud input.
+  auto subscription_callback_group =
+      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  for (const auto& topic : pointcloud_inputs_) {
+    auto cb_group = this->create_callback_group(
+        rclcpp::CallbackGroupType::MutuallyExclusive);
+    auto options = rclcpp::SubscriptionOptions();
+    options.callback_group = cb_group;
+    auto qos = rclcpp::SystemDefaultsQoS();
+    auto sub = create_subscription<sensor_msgs::msg::PointCloud2>(
+        topic, qos,
+        std::bind(&vdbfusion_node::integratePointCloudCB, this,
+                  std::placeholders::_1),
+        options);
+    pointcloud_subs_.push_back(sub);
+    pointcloud_callback_groups_.push_back(cb_group);
+  }
 
   // publishers
-  tsdf_pub_ =
-      create_publisher<visualization_msgs::msg::Marker>("output/tsdf", 10);
-  mesh_pub_ =
-      create_publisher<visualization_msgs::msg::Marker>("output/mesh", 10);
+  tsdf_pub_ = create_publisher<visualization_msgs::msg::Marker>(
+      output_topic_ + "/tsdf", 10);
+  mesh_pub_ = create_publisher<visualization_msgs::msg::Marker>(
+      output_topic_ + "/mesh", 10);
 
   // publishing timers
   if (get_parameter("publish_tsdf").as_bool()) {
@@ -78,6 +89,9 @@ vdbfusion_node::vdbfusion_node(const rclcpp::NodeOptions& options)
 }
 
 void vdbfusion_node::initializeParameters() {
+  declare_parameter("pointcloud_inputs", std::vector<std::string>{"cloud_in"});
+  declare_parameter("output_topic", "output");
+
   declare_parameter("voxel_size", 0.05f);
   declare_parameter("truncation_distance", 0.15f);
   declare_parameter("space_carving", true);
@@ -99,6 +113,9 @@ void vdbfusion_node::initializeParameters() {
 }
 
 void vdbfusion_node::retrieveParameters() {
+  get_parameter("pointcloud_inputs", pointcloud_inputs_);
+  get_parameter("output_topic", output_topic_);
+
   get_parameter("preprocess", preprocess_);
   get_parameter("apply_pose", apply_pose_);
   get_parameter("min_range", min_range_);
@@ -113,6 +130,39 @@ void vdbfusion_node::retrieveParameters() {
   timestamp_tolerance_ = rclcpp::Duration(0, timestamp_tolerance_ns);
 
   get_parameter("use_sim_time", this->use_sim_time_);
+
+  RCLCPP_INFO(get_logger(), "Parameters retrieved successfully:");
+  RCLCPP_INFO(get_logger(), "   pointcloud_inputs:");
+  for (const auto& topic : pointcloud_inputs_) {
+    RCLCPP_INFO(get_logger(), "     - %s", topic.c_str());
+  }
+  RCLCPP_INFO(get_logger(), "   output_topic: %s", output_topic_.c_str());
+  RCLCPP_INFO(get_logger(), "   voxel_size: %f",
+              get_parameter("voxel_size").as_double());
+  RCLCPP_INFO(get_logger(), "   truncation_distance: %f",
+              get_parameter("truncation_distance").as_double());
+  RCLCPP_INFO(get_logger(), "   space_carving: %s",
+              get_parameter("space_carving").as_bool() ? "true" : "false");
+  RCLCPP_INFO(get_logger(), "   preprocess: %s",
+              preprocess_ ? "true" : "false");
+  RCLCPP_INFO(get_logger(), "   apply_pose: %s",
+              apply_pose_ ? "true" : "false");
+  RCLCPP_INFO(get_logger(), "   min_range: %f", min_range_);
+  RCLCPP_INFO(get_logger(), "   max_range: %f", max_range_);
+  RCLCPP_INFO(get_logger(), "   fill_holes: %s",
+              fill_holes_ ? "true" : "false");
+  RCLCPP_INFO(get_logger(), "   min_weight: %f", min_weight_);
+  RCLCPP_INFO(get_logger(), "   static_frame_id: %s", static_frame_id_.c_str());
+  RCLCPP_INFO(get_logger(), "   timestamp_tolerance_ns: %ld ns",
+              timestamp_tolerance_ns);
+  RCLCPP_INFO(get_logger(), "   use_sim_time: %s",
+              use_sim_time_ ? "true" : "false");
+  RCLCPP_INFO(get_logger(), "   publish_interval_ms: %d",
+              get_parameter("publish_interval_ms").as_int());
+  RCLCPP_INFO(get_logger(), "   publish_tsdf: %s",
+              get_parameter("publish_tsdf").as_bool() ? "true" : "false");
+  RCLCPP_INFO(get_logger(), "   publish_mesh: %s",
+              get_parameter("publish_mesh").as_bool() ? "true" : "false");
 }
 
 void vdbfusion_node::initializeVDBVolume() {
@@ -197,8 +247,11 @@ int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
   rclcpp::NodeOptions options;
   options.use_intra_process_comms(true);
+  auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
   auto node = std::make_shared<vdbfusion::vdbfusion_node>(options);
-  rclcpp::spin(node);
-  rclcpp::shutdown();
+  executor->add_node(node);
+  RCLCPP_INFO(node->get_logger(), "VDBfusion_node is running...");
+  // Spin the node using the executor
+  executor->spin();
   return 0;
 }
