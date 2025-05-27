@@ -1,5 +1,6 @@
 vdbfusion_node:
   ros__parameters:
+    use_sim_time: true
     pointcloud_inputs:
       - "/trimesh_self_filter/lidar_front_left"
       - "/trimesh_self_filter/lidar_boom"
