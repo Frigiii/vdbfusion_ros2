@@ -88,91 +88,15 @@ vdbfusion_node::vdbfusion_node(const rclcpp::NodeOptions& options)
   RCLCPP_INFO(get_logger(), "Successfully initialized vdbfusion_node");
 }
 
-void vdbfusion_node::initializeParameters() {
-  declare_parameter("pointcloud_inputs", std::vector<std::string>{"cloud_in"});
-  declare_parameter("output_topic", "output");
-
-  declare_parameter("voxel_size", 0.05f);
-  declare_parameter("truncation_distance", 0.15f);
-  declare_parameter("space_carving", true);
-
-  declare_parameter("preprocess", true);
-  declare_parameter("apply_pose", true);
-  declare_parameter("min_range", 0.0f);
-  declare_parameter("max_range", 3.0f);
-
-  declare_parameter("fill_holes", false);
-  declare_parameter("min_weight", 0.0f);
-
-  declare_parameter("timestamp_tolerance_ns", 10000);
-  declare_parameter("static_frame_id", "world");
-
-  declare_parameter("publish_interval_ms", 1000);
-  declare_parameter("publish_tsdf", true);
-  declare_parameter("publish_mesh", true);
-}
-
-void vdbfusion_node::retrieveParameters() {
-  get_parameter("pointcloud_inputs", pointcloud_inputs_);
-  get_parameter("output_topic", output_topic_);
-
-  get_parameter("preprocess", preprocess_);
-  get_parameter("apply_pose", apply_pose_);
-  get_parameter("min_range", min_range_);
-  get_parameter("max_range", max_range_);
-
-  get_parameter("fill_holes", fill_holes_);
-  get_parameter("min_weight", min_weight_);
-  get_parameter("static_frame_id", static_frame_id_);
-
-  int timestamp_tolerance_ns = 10000;
-  get_parameter("timestamp_tolerance_ns", timestamp_tolerance_ns);
-  timestamp_tolerance_ = rclcpp::Duration(0, timestamp_tolerance_ns);
-
-  get_parameter("use_sim_time", this->use_sim_time_);
-
-  RCLCPP_INFO(get_logger(), "Parameters retrieved successfully:");
-  RCLCPP_INFO(get_logger(), "   pointcloud_inputs:");
-  for (const auto& topic : pointcloud_inputs_) {
-    RCLCPP_INFO(get_logger(), "     - %s", topic.c_str());
-  }
-  RCLCPP_INFO(get_logger(), "   output_topic: %s", output_topic_.c_str());
-  RCLCPP_INFO(get_logger(), "   voxel_size: %f",
-              get_parameter("voxel_size").as_double());
-  RCLCPP_INFO(get_logger(), "   truncation_distance: %f",
-              get_parameter("truncation_distance").as_double());
-  RCLCPP_INFO(get_logger(), "   space_carving: %s",
-              get_parameter("space_carving").as_bool() ? "true" : "false");
-  RCLCPP_INFO(get_logger(), "   preprocess: %s",
-              preprocess_ ? "true" : "false");
-  RCLCPP_INFO(get_logger(), "   apply_pose: %s",
-              apply_pose_ ? "true" : "false");
-  RCLCPP_INFO(get_logger(), "   min_range: %f", min_range_);
-  RCLCPP_INFO(get_logger(), "   max_range: %f", max_range_);
-  RCLCPP_INFO(get_logger(), "   fill_holes: %s",
-              fill_holes_ ? "true" : "false");
-  RCLCPP_INFO(get_logger(), "   min_weight: %f", min_weight_);
-  RCLCPP_INFO(get_logger(), "   static_frame_id: %s", static_frame_id_.c_str());
-  RCLCPP_INFO(get_logger(), "   timestamp_tolerance_ns: %ld ns",
-              timestamp_tolerance_ns);
-  RCLCPP_INFO(get_logger(), "   use_sim_time: %s",
-              use_sim_time_ ? "true" : "false");
-  RCLCPP_INFO(get_logger(), "   publish_interval_ms: %d",
-              get_parameter("publish_interval_ms").as_int());
-  RCLCPP_INFO(get_logger(), "   publish_tsdf: %s",
-              get_parameter("publish_tsdf").as_bool() ? "true" : "false");
-  RCLCPP_INFO(get_logger(), "   publish_mesh: %s",
-              get_parameter("publish_mesh").as_bool() ? "true" : "false");
-}
-
 void vdbfusion_node::initializeVDBVolume() {
   float voxel_size, truncation_distance;
   bool space_carving;
   get_parameter("voxel_size", voxel_size);
   get_parameter("truncation_distance", truncation_distance);
   get_parameter("space_carving", space_carving);
-  vdb_volume_ = std::make_shared<VDBVolume>(voxel_size, truncation_distance,
-                                            space_carving);
+  vdb_volume_ = std::make_shared<VDBVolumeType>(voxel_size, truncation_distance,
+                                                space_carving);
+  vdb_volume_->max_weight_ = max_weight_;
 }
 
 void vdbfusion_node::integratePointCloudCB(
@@ -222,21 +146,27 @@ void vdbfusion_node::tsdfTimerCB() { this->publishTSDF(); }
 
 void vdbfusion_node::meshTimerCB() { this->publishMesh(); }
 
-void vdbfusion_node::publishTSDF() {
+void vdbfusion_node::publishTSDF(std::shared_ptr<VDBVolumeType> vdb_volume,
+                                 std::string ns) {
+  if (!vdb_volume) vdb_volume = vdb_volume_;
   auto header = std_msgs::msg::Header{};
   header.stamp = latest_pc_header_stamp_;
   header.frame_id = static_frame_id_;
-  auto tsdf_marker = vdbVolumeToCubeMarker(*vdb_volume_, header, min_weight_);
+  auto tsdf_marker = vdbVolumeToCubeMarker(*vdb_volume, header, min_weight_);
+  tsdf_marker.ns = ns;
 
   tsdf_pub_->publish(tsdf_marker);
 }
 
-void vdbfusion_node::publishMesh() {
+void vdbfusion_node::publishMesh(std::shared_ptr<VDBVolumeType> vdb_volume,
+                                 std::string ns) {
+  if (!vdb_volume) vdb_volume = vdb_volume_;
   auto header = std_msgs::msg::Header{};
   header.stamp = latest_pc_header_stamp_;
   header.frame_id = static_frame_id_;
   auto mesh_marker =
-      vdbVolumeToMeshMarker(*vdb_volume_, header, fill_holes_, min_weight_);
+      vdbVolumeToMeshMarker(*vdb_volume, header, fill_holes_, min_weight_);
+  mesh_marker.ns = ns;
 
   mesh_pub_->publish(mesh_marker);
 }

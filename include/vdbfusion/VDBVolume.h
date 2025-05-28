@@ -40,9 +40,9 @@ class VDBVolume {
  public:
   /// @brief Integrates a new (globally aligned) PointCloud into the current
   /// tsdf_ volume.
-  void Integrate(const std::vector<Eigen::Vector3d>& points,
-                 const Eigen::Vector3d& origin,
-                 const std::function<float(float)>& weighting_function);
+  virtual void Integrate(const std::vector<Eigen::Vector3d>& points,
+                         const Eigen::Vector3d& origin,
+                         const std::function<float(float)>& weighting_function);
 
   /// @brief Integrates a new (globally aligned) PointCloud into the current
   /// tsdf_ volume.
@@ -55,7 +55,7 @@ class VDBVolume {
 
   /// @brief Integrate incoming TSDF grid inside the current volume using the
   /// TSDF equations
-  void Integrate(openvdb::FloatGrid::Ptr grid,
+  void Integrate(std::shared_ptr<openvdb::FloatGrid> grid,
                  const std::function<float(float)>& weighting_function);
 
   /// @brief Fuse a new given sdf value at the given voxel location, thread-safe
@@ -64,7 +64,7 @@ class VDBVolume {
 
   /// @brief Prune TSDF grids, ideal utility to cleanup a D(x) volume before
   /// exporting it
-  openvdb::FloatGrid::Ptr Prune(float min_weight) const;
+  std::shared_ptr<openvdb::FloatGrid> Prune(float min_weight) const;
 
   /// @brief Extracts a TriangleMesh as the iso-surface in the actual volume
   [[nodiscard]] std::tuple<std::vector<Eigen::Vector3d>,
@@ -73,13 +73,16 @@ class VDBVolume {
 
  public:
   /// OpenVDB Grids modeling the signed distance field and the weight grid
-  openvdb::FloatGrid::Ptr tsdf_;
-  openvdb::FloatGrid::Ptr weights_;
+  std::shared_ptr<openvdb::FloatGrid> tsdf_;
+  std::shared_ptr<openvdb::FloatGrid> weights_;
 
   /// VDBVolume public properties
   float voxel_size_;
   float sdf_trunc_;
   bool space_carving_;
+
+  float max_weight_ =
+      1.0f;  // Maximum allowable weight for the weighting function
 };
 
 }  // namespace vdbfusion

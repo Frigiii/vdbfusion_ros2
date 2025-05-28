@@ -119,8 +119,8 @@ void VDBVolume::Integrate(
   const openvdb::Vec3R eye(origin.x(), origin.y(), origin.z());
 
   // Get the "unsafe" version of the grid acessors
-  auto tsdf_acc = tsdf_->getUnsafeAccessor();
-  auto weights_acc = weights_->getUnsafeAccessor();
+  auto tsdf_acc = tsdf_->getAccessor();
+  auto weights_acc = weights_->getAccessor();
 
   // Launch an for_each execution, use std::execution::par to parallelize this
   // region
@@ -154,7 +154,7 @@ void VDBVolume::Integrate(
         const float new_tsdf =
             (last_tsdf * last_weight + tsdf * weight) / (new_weight);
         tsdf_acc.setValue(voxel, new_tsdf);
-        weights_acc.setValue(voxel, new_weight);
+        weights_acc.setValue(voxel, std::min(new_weight, max_weight_));
       }
     } while (dda.step());
   });

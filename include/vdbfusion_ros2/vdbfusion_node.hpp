@@ -12,15 +12,99 @@
 
 #include "rclcpp_components/register_node_macro.hpp"
 #include "vdbfusion/VDBVolume.h"
+#include "vdbfusion/DiscreteSDFFlow.h"
 
 namespace vdbfusion {
+// using VDBVolumeType = vdbfusion::DiscreteSDFFlow;
+using VDBVolumeType =
+    vdbfusion::DiscreteSDFFlow;  // Use VDBVolume for basic TSDF integration
 class vdbfusion_node : public rclcpp::Node {
  public:
   vdbfusion_node(const rclcpp::NodeOptions& options);
 
  private:
-  void initializeParameters();
-  void retrieveParameters();
+  void initializeParameters() {
+    declare_parameter("pointcloud_inputs",
+                      std::vector<std::string>{"cloud_in"});
+    declare_parameter("output_topic", "output");
+
+    declare_parameter("voxel_size", 0.05f);
+    declare_parameter("truncation_distance", 0.15f);
+    declare_parameter("space_carving", true);
+
+    declare_parameter("preprocess", true);
+    declare_parameter("apply_pose", true);
+    declare_parameter("min_range", 0.0f);
+    declare_parameter("max_range", 3.0f);
+
+    declare_parameter("fill_holes", false);
+    declare_parameter("min_weight", 0.0f);
+    declare_parameter("max_weight", 1.0f);
+
+    declare_parameter("timestamp_tolerance_ns", 10000);
+    declare_parameter("static_frame_id", "world");
+
+    declare_parameter("publish_interval_ms", 1000);
+    declare_parameter("publish_tsdf", true);
+    declare_parameter("publish_mesh", true);
+  }
+
+  void retrieveParameters() {
+    get_parameter("pointcloud_inputs", pointcloud_inputs_);
+    get_parameter("output_topic", output_topic_);
+
+    get_parameter("preprocess", preprocess_);
+    get_parameter("apply_pose", apply_pose_);
+    get_parameter("min_range", min_range_);
+    get_parameter("max_range", max_range_);
+
+    get_parameter("fill_holes", fill_holes_);
+    get_parameter("min_weight", min_weight_);
+    get_parameter("max_weight", max_weight_);
+    get_parameter("static_frame_id", static_frame_id_);
+
+    int timestamp_tolerance_ns = 10000;
+    get_parameter("timestamp_tolerance_ns", timestamp_tolerance_ns);
+    timestamp_tolerance_ = rclcpp::Duration(0, timestamp_tolerance_ns);
+
+    get_parameter("use_sim_time", this->use_sim_time_);
+
+    RCLCPP_INFO(get_logger(), "Parameters retrieved successfully:");
+    RCLCPP_INFO(get_logger(), "   pointcloud_inputs:");
+    for (const auto& topic : pointcloud_inputs_) {
+      RCLCPP_INFO(get_logger(), "     - %s", topic.c_str());
+    }
+    RCLCPP_INFO(get_logger(), "   output_topic: %s", output_topic_.c_str());
+    RCLCPP_INFO(get_logger(), "   voxel_size: %f",
+                get_parameter("voxel_size").as_double());
+    RCLCPP_INFO(get_logger(), "   truncation_distance: %f",
+                get_parameter("truncation_distance").as_double());
+    RCLCPP_INFO(get_logger(), "   space_carving: %s",
+                get_parameter("space_carving").as_bool() ? "true" : "false");
+    RCLCPP_INFO(get_logger(), "   preprocess: %s",
+                preprocess_ ? "true" : "false");
+    RCLCPP_INFO(get_logger(), "   apply_pose: %s",
+                apply_pose_ ? "true" : "false");
+    RCLCPP_INFO(get_logger(), "   min_range: %f", min_range_);
+    RCLCPP_INFO(get_logger(), "   max_range: %f", max_range_);
+    RCLCPP_INFO(get_logger(), "   fill_holes: %s",
+                fill_holes_ ? "true" : "false");
+    RCLCPP_INFO(get_logger(), "   min_weight: %f", min_weight_);
+    RCLCPP_INFO(get_logger(), "   max_weight: %f", max_weight_);
+    RCLCPP_INFO(get_logger(), "   static_frame_id: %s",
+                static_frame_id_.c_str());
+    RCLCPP_INFO(get_logger(), "   timestamp_tolerance_ns: %ld ns",
+                timestamp_tolerance_ns);
+    RCLCPP_INFO(get_logger(), "   use_sim_time: %s",
+                use_sim_time_ ? "true" : "false");
+    RCLCPP_INFO(get_logger(), "   publish_interval_ms: %d",
+                get_parameter("publish_interval_ms").as_int());
+    RCLCPP_INFO(get_logger(), "   publish_tsdf: %s",
+                get_parameter("publish_tsdf").as_bool() ? "true" : "false");
+    RCLCPP_INFO(get_logger(), "   publish_mesh: %s",
+                get_parameter("publish_mesh").as_bool() ? "true" : "false");
+  }
+
   void initializeVDBVolume();
 
   void integratePointCloudCB(
@@ -28,11 +112,40 @@ class vdbfusion_node : public rclcpp::Node {
   void tsdfTimerCB();
   void meshTimerCB();
 
-  void publishTSDF();
-  void publishMesh();
+  void publishTSDF(std::shared_ptr<VDBVolumeType> vdb_volume = nullptr,
+                   std::string ns = "tsdf");
+  void publishMesh(std::shared_ptr<VDBVolumeType> vdb_volume = nullptr,
+                   std::string ns = "mesh");
+  void inline publishMesh(std::shared_ptr<openvdb::FloatGrid> grid,
+                          std::string ns = "mesh") {
+    // check the grid
+    if (!grid) {
+      RCLCPP_ERROR(get_logger(), "Grid is null, cannot publish mesh.");
+      return;
+    }
+
+    float voxel_size, truncation_distance;
+    bool space_carving;
+    if (vdb_volume_) {
+      voxel_size = vdb_volume_->voxel_size_;
+      truncation_distance = vdb_volume_->sdf_trunc_;
+      space_carving = vdb_volume_->space_carving_;
+    } else {
+      voxel_size = 0.05f;          // Default voxel size
+      truncation_distance = 0.1f;  // Default truncation distance
+      space_carving = false;       // Default space carving
+    }
+    auto vdb_volume = std::make_shared<VDBVolumeType>(
+        voxel_size, truncation_distance, space_carving);
+
+    vdb_volume->tsdf_ = grid;
+    vdb_volume->max_weight_ = max_weight_;
+    vdb_volume->weights_ = openvdb::FloatGrid::create(1.0f);
+    publishMesh(vdb_volume, ns);
+  }
 
  private:
-  std::shared_ptr<VDBVolume> vdb_volume_;
+  std::shared_ptr<VDBVolumeType> vdb_volume_;
 
   // subscribers
   std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr>
@@ -61,6 +174,7 @@ class vdbfusion_node : public rclcpp::Node {
 
   bool fill_holes_;
   float min_weight_;
+  float max_weight_;
 
   std::vector<std::string> pointcloud_inputs_;
   std::string output_topic_;

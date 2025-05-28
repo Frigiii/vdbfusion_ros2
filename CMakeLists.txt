@@ -35,6 +35,7 @@ add_library(
   vdbfusion_library
   src/vdbfusion/VDBVolume.cpp
   src/vdbfusion/MarchingCubes.cpp
+  src/vdbfusion/DiscreteSDFFlow.cpp
 )
 target_include_directories(
   vdbfusion_library
