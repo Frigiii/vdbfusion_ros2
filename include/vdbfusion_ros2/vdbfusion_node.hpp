@@ -61,6 +61,7 @@ class vdbfusion_node : public rclcpp::Node {
 
   bool fill_holes_;
   float min_weight_;
+  float max_weight_;
 
   std::vector<std::string> pointcloud_inputs_;
   std::string output_topic_;

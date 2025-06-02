@@ -34,7 +34,8 @@ namespace vdbfusion {
 
 class VDBVolume {
  public:
-  VDBVolume(float voxel_size, float sdf_trunc, bool space_carving = false);
+  VDBVolume(float voxel_size, float sdf_trunc, bool space_carving = false,
+            float max_weight = 100.0f);
   ~VDBVolume() = default;
 
  public:
@@ -80,6 +81,7 @@ class VDBVolume {
   float voxel_size_;
   float sdf_trunc_;
   bool space_carving_;
+  float max_weight_;
 };
 
 }  // namespace vdbfusion

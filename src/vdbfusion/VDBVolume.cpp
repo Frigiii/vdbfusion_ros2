@@ -60,10 +60,12 @@ Eigen::Vector3d GetVoxelCenter(const openvdb::Coord& voxel,
 namespace vdbfusion {
 
 VDBVolume::VDBVolume(float voxel_size, float sdf_trunc,
-                     bool space_carving /* = false*/)
+                     bool space_carving /* = false*/,
+                     float max_weight /* = 100.0f*/)
     : voxel_size_(voxel_size),
       sdf_trunc_(sdf_trunc),
-      space_carving_(space_carving) {
+      space_carving_(space_carving),
+      max_weight_(max_weight) {
   tsdf_ = openvdb::FloatGrid::create(sdf_trunc_);
   tsdf_->setName("D(x): signed distance grid");
   tsdf_->setTransform(
@@ -92,7 +94,7 @@ void VDBVolume::UpdateTSDF(
     const float new_tsdf =
         (last_tsdf * last_weight + tsdf * weight) / (new_weight);
     tsdf_acc.setValue(voxel, new_tsdf);
-    weights_acc.setValue(voxel, new_weight);
+    weights_acc.setValue(voxel, std::min(new_weight, max_weight_));
   }
 }
 
@@ -154,7 +156,7 @@ void VDBVolume::Integrate(
         const float new_tsdf =
             (last_tsdf * last_weight + tsdf * weight) / (new_weight);
         tsdf_acc.setValue(voxel, new_tsdf);
-        weights_acc.setValue(voxel, new_weight);
+        weights_acc.setValue(voxel, std::min(new_weight, max_weight_));
       }
     } while (dda.step());
   });

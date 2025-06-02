@@ -103,6 +103,7 @@ void vdbfusion_node::initializeParameters() {
 
   declare_parameter("fill_holes", false);
   declare_parameter("min_weight", 0.0f);
+  declare_parameter("max_weight", 100.0f);
 
   declare_parameter("timestamp_tolerance_ns", 10000);
   declare_parameter("static_frame_id", "world");
@@ -123,6 +124,7 @@ void vdbfusion_node::retrieveParameters() {
 
   get_parameter("fill_holes", fill_holes_);
   get_parameter("min_weight", min_weight_);
+  get_parameter("max_weight", max_weight_);
   get_parameter("static_frame_id", static_frame_id_);
 
   int timestamp_tolerance_ns = 10000;
@@ -152,6 +154,7 @@ void vdbfusion_node::retrieveParameters() {
   RCLCPP_INFO(get_logger(), "   fill_holes: %s",
               fill_holes_ ? "true" : "false");
   RCLCPP_INFO(get_logger(), "   min_weight: %f", min_weight_);
+  RCLCPP_INFO(get_logger(), "   max_weight: %f", max_weight_);
   RCLCPP_INFO(get_logger(), "   static_frame_id: %s", static_frame_id_.c_str());
   RCLCPP_INFO(get_logger(), "   timestamp_tolerance_ns: %ld ns",
               timestamp_tolerance_ns);
@@ -172,7 +175,7 @@ void vdbfusion_node::initializeVDBVolume() {
   get_parameter("truncation_distance", truncation_distance);
   get_parameter("space_carving", space_carving);
   vdb_volume_ = std::make_shared<VDBVolume>(voxel_size, truncation_distance,
-                                            space_carving);
+                                            space_carving, max_weight_);
 }
 
 void vdbfusion_node::integratePointCloudCB(
