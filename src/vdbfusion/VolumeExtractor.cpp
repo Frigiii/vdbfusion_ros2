@@ -34,14 +34,48 @@
 
 namespace vdbfusion {
 void VolumeExtractor::updateVolume() {
-  VDBFUSION_VOLUMEEXTRACTOR_ASSERT(extract_volume_ && tsdf_ && boundary_);
+  VDBFUSION_VOLUMEEXTRACTOR_ASSERT(tsdf_ && boundary_);
+
+  // Create a new extract volume if it does not exist. Same properties as tsdf_
+  if (!extract_volume_) {
+    extract_volume_ = openvdb::FloatGrid::create(tsdf_->background());
+    extract_volume_->setTransform(tsdf_->transformPtr());
+  }
 
   // Clear the existing volume
   extract_volume_->tree().clear();
 
   // Create the intersection of the volume and boundary and calculate the volume
   // value
-  //   TODO
+
+  size_t count = 0;
+  auto xform = tsdf_->transform();
+  const float voxel_size = xform.voxelSize()[0];
+
+  auto tsdf_acc = tsdf_->getAccessor();
+  auto boundary_acc = boundary_->getAccessor();
+  auto extract_acc = extract_volume_->getAccessor();
+
+  for (auto iter = boundary_->cbeginValueOn(); iter.test(); ++iter) {
+    // Get the coordinate of the current voxel
+    const openvdb::Coord& coord = iter.getCoord();
+
+    // Check if the coordinate is active in both grids
+    if (boundary_acc.isValueOn(coord) && tsdf_acc.isValueOn(coord)) {
+      // Get the values from both grids
+      const float tsdf_value = tsdf_acc.getValue(coord);
+      const float boundary_value = boundary_acc.getValue(coord);
+      const float extract_value = std::max(tsdf_value, boundary_value);
+
+      if (extract_value < iso_level_) ++count;
+
+      // Set the value in the extract volume
+      extract_acc.setValue(coord, std::max(tsdf_value, extract_value));
+    }
+  }
+
+  volume_value_ = static_cast<float>(count) * voxel_size * voxel_size *
+                  voxel_size;  // Volume value in cubic meters
 }
 
 void VolumeExtractor::loadBoundaryMesh(const std::string& boundary_mesh) {
@@ -58,15 +92,28 @@ void VolumeExtractor::loadBoundaryMesh(const std::string& boundary_mesh) {
   // Load the mesh using tinyobjloader //
   ///////////////////////////////////////
 
-  tinyobj::attrib_t attrib;
-  std::vector<tinyobj::shape_t> shapes;
-  std::vector<tinyobj::material_t> materials;
-  std::string warn, err;
+  tinyobj::ObjReaderConfig reader_config;
+  tinyobj::ObjReader reader;
 
-  if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err,
-                        boundary_mesh.c_str())) {
-    throw std::runtime_error("Failed to load boundary mesh: " + warn + err);
+  if (!reader.ParseFromFile(boundary_mesh, reader_config)) {
+    throw std::runtime_error("Failed to parse boundary mesh: " +
+                             reader.Error());
   }
+
+  if (!reader.Warning().empty()) {
+    std::cerr << "Warning while loading boundary mesh: " << reader.Warning()
+              << std::endl;
+  }
+
+  auto& attrib = reader.GetAttrib();
+  auto& shapes = reader.GetShapes();
+  auto& materials = reader.GetMaterials();
+
+  std::cout << "Loaded boundary mesh: " << boundary_mesh << std::endl;
+  std::cout << "Number of vertices: " << attrib.vertices.size() / 3
+            << std::endl;
+  std::cout << "Number of shapes: " << shapes.size() << std::endl;
+  std::cout << "Number of materials: " << materials.size() << std::endl;
 
   // Fill points
   for (size_t v = 0; v < attrib.vertices.size() / 3; ++v) {
@@ -112,13 +159,26 @@ void VolumeExtractor::loadBoundaryMesh(const std::string& boundary_mesh) {
   auto xform = tsdf_->transform();
 
   // Typical values for exBandWidth and inBandWidth are 3.0 to 5.0 times the
-  // voxel size. To have the SDF filled on the inside and empty on the outside,
-  // set inBandWidth large enough to cover the interior. Example:
-  //   const float voxel_size = xform.voxelSize()[0];
-  //   float exBandWidth = 3.0f * voxel_size;  // exterior narrow band width
-  //   float inBandWidth = 5.0f * voxel_size;  // interior narrow band width
+  // voxel size. To have the SDF filled on the inside and empty on the
+  // outside, set inBandWidth large enough to cover the interior. Example:
+  // const float voxel_size = xform.voxelSize()[0];
+  // float exBandWidth = 3.0f * voxel_size;  // exterior narrow band width
+  // float inBandWidth = 500.0f * voxel_size;  // interior narrow band width$
 
-  boundary_ = openvdb::tools::meshToLevelSet<GridType>(
-      xform, boundary_points, boundary_triangles, boundary_quads);
+  std::cout << "Converting boundary mesh to VDB SDF..." << std::endl;
+  std::cout << "Number of boundary points: " << boundary_points.size()
+            << std::endl;
+  std::cout << "Number of boundary triangles: " << boundary_triangles.size()
+            << std::endl;
+  std::cout << "Number of boundary quads: " << boundary_quads.size()
+            << std::endl;
+
+  //   boundary_ = openvdb::tools::meshToLevelSet<GridType>(
+  //       xform, boundary_points, boundary_triangles, boundary_quads);
+  boundary_ = openvdb::tools::meshToSignedDistanceField<GridType>(
+      xform, boundary_points, boundary_triangles, boundary_quads, 3, 500);
+
+  boundary_->setName("boundary");
+  boundary_->setTransform(tsdf_->transformPtr());
 }
 }  // namespace vdbfusion

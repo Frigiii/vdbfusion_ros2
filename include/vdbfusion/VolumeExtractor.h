@@ -48,6 +48,7 @@ class VolumeExtractor {
 
   GridPtr getExtractVolume() const {
     VDBFUSION_VOLUMEEXTRACTOR_ASSERT(extract_volume_);
+    // return boundary_;
     return extract_volume_;
   }
 

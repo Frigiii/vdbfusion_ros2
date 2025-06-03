@@ -31,6 +31,7 @@
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 #include <vector>
 
+#include "time.h"
 #include "vdbfusion_ros2/utils.hpp"
 #include "vdbfusion_ros2/vdbfusion_node.hpp"
 
@@ -214,7 +215,10 @@ void vdbfusion_node::integratePointCloudCB(
     if (use_sim_time_) {
       // If using simulation time, we need to capture the latest point cloud
       // header
-      latest_pc_header_stamp_ = pcd_in->header.stamp;
+      if (pcd_in->header.stamp.sec > latest_pc_header_stamp_.sec ||
+          (pcd_in->header.stamp.sec == latest_pc_header_stamp_.sec &&
+           pcd_in->header.stamp.nanosec > latest_pc_header_stamp_.nanosec))
+        latest_pc_header_stamp_ = pcd_in->header.stamp;
     } else {
       // If not using simulation time, we can use the current time
       latest_pc_header_stamp_ = this->now();
@@ -235,7 +239,7 @@ void vdbfusion_node::integratePointCloudCB(
     auto origin = Eigen::Vector3d{x, y, z};
 
     vdb_volume_->Integrate(scan, origin,
-                           [](float /* unuused*/) { return 0.2; });
+                           [](float /* unuused*/) { return 1.0; });
   }
 }
 
