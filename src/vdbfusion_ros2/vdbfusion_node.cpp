@@ -70,6 +70,10 @@ vdbfusion_node::vdbfusion_node(const rclcpp::NodeOptions& options)
       output_topic_ + "/tsdf", 10);
   mesh_pub_ = create_publisher<visualization_msgs::msg::Marker>(
       output_topic_ + "/mesh", 10);
+  volume_mesh_pub_ = create_publisher<visualization_msgs::msg::Marker>(
+      output_topic_ + "/volume_mesh", 10);
+  volume_val_pub_ = create_publisher<std_msgs::msg::Float32>(
+      output_topic_ + "/volume_value", 10);
 
   // publishing timers
   if (get_parameter("publish_tsdf").as_bool()) {
@@ -83,6 +87,12 @@ vdbfusion_node::vdbfusion_node(const rclcpp::NodeOptions& options)
     mesh_pub_timer_ =
         create_wall_timer(std::chrono::milliseconds(publish_interval_ms),
                           std::bind(&vdbfusion_node::meshTimerCB, this));
+  }
+  if (get_parameter("publish_volume").as_bool()) {
+    auto publish_interval_ms = get_parameter("publish_interval_ms").as_int();
+    volume_pub_timer_ =
+        create_wall_timer(std::chrono::milliseconds(publish_interval_ms),
+                          std::bind(&vdbfusion_node::volumeTimerCB, this));
   }
 
   RCLCPP_INFO(get_logger(), "Successfully initialized vdbfusion_node");
@@ -111,6 +121,20 @@ void vdbfusion_node::initializeParameters() {
   declare_parameter("publish_interval_ms", 1000);
   declare_parameter("publish_tsdf", true);
   declare_parameter("publish_mesh", true);
+  declare_parameter("publish_volume", false);
+
+  declare_parameter("volume_limits.x_min",
+                    std::numeric_limits<float>::quiet_NaN());
+  declare_parameter("volume_limits.x_max",
+                    std::numeric_limits<float>::quiet_NaN());
+  declare_parameter("volume_limits.y_min",
+                    std::numeric_limits<float>::quiet_NaN());
+  declare_parameter("volume_limits.y_max",
+                    std::numeric_limits<float>::quiet_NaN());
+  declare_parameter("volume_limits.z_min",
+                    std::numeric_limits<float>::quiet_NaN());
+  declare_parameter("volume_limits.z_max",
+                    std::numeric_limits<float>::quiet_NaN());
 }
 
 void vdbfusion_node::retrieveParameters() {
@@ -132,6 +156,34 @@ void vdbfusion_node::retrieveParameters() {
   timestamp_tolerance_ = rclcpp::Duration(0, timestamp_tolerance_ns);
 
   get_parameter("use_sim_time", this->use_sim_time_);
+
+  get_parameter("volume_limits.x_min", volume_x_min_);
+  get_parameter("volume_limits.x_max", volume_x_max_);
+  get_parameter("volume_limits.y_min", volume_y_min_);
+  get_parameter("volume_limits.y_max", volume_y_max_);
+  get_parameter("volume_limits.z_min", volume_z_min_);
+  get_parameter("volume_limits.z_max", volume_z_max_);
+  if (std::isnan(volume_x_min_)) {
+    volume_x_min_ = -std::numeric_limits<float>::infinity();
+  }
+  if (std::isnan(volume_x_max_)) {
+    volume_x_max_ = std::numeric_limits<float>::infinity();
+  }
+  if (std::isnan(volume_y_min_)) {
+    volume_y_min_ = -std::numeric_limits<float>::infinity();
+  }
+  if (std::isnan(volume_y_max_)) {
+    volume_y_max_ = std::numeric_limits<float>::infinity();
+  }
+  if (std::isnan(volume_z_min_)) {
+    volume_z_min_ = -std::numeric_limits<float>::infinity();
+  }
+  if (std::isnan(volume_z_max_)) {
+    volume_z_max_ = std::numeric_limits<float>::infinity();
+  }
+  RCLCPP_INFO(get_logger(), "Volume limits set to: [%f, %f, %f] - [%f, %f, %f]",
+              volume_x_min_, volume_y_min_, volume_z_min_, volume_x_max_,
+              volume_y_max_, volume_z_max_);
 
   RCLCPP_INFO(get_logger(), "Parameters retrieved successfully:");
   RCLCPP_INFO(get_logger(), "   pointcloud_inputs:");
@@ -166,6 +218,8 @@ void vdbfusion_node::retrieveParameters() {
               get_parameter("publish_tsdf").as_bool() ? "true" : "false");
   RCLCPP_INFO(get_logger(), "   publish_mesh: %s",
               get_parameter("publish_mesh").as_bool() ? "true" : "false");
+  RCLCPP_INFO(get_logger(), "   publish_volume: %s",
+              get_parameter("publish_volume").as_bool() ? "true" : "false");
 }
 
 void vdbfusion_node::initializeVDBVolume() {
@@ -224,6 +278,29 @@ void vdbfusion_node::integratePointCloudCB(
 void vdbfusion_node::tsdfTimerCB() { this->publishTSDF(); }
 
 void vdbfusion_node::meshTimerCB() { this->publishMesh(); }
+
+void vdbfusion_node::volumeTimerCB() {
+  this->publishVolumeValue();
+  this->publishVolumeMesh();
+}
+
+void vdbfusion_node::publishVolumeMesh() {
+  auto header = std_msgs::msg::Header{};
+  header.stamp = latest_pc_header_stamp_;
+  header.frame_id = static_frame_id_;
+  auto mesh_marker = vdbVolumeVolumetoMeshMarker(*vdb_volume_, header,
+                                                 fill_holes_, min_weight_);
+
+  volume_mesh_pub_->publish(mesh_marker);
+}
+
+void vdbfusion_node::publishVolumeValue() {
+  vdb_volume_->updateVolume(volume_x_min_, volume_x_max_, volume_y_min_,
+                            volume_y_max_, volume_z_min_, volume_z_max_);
+  std_msgs::msg::Float32 volume_value;
+  volume_value.data = vdb_volume_->getVolumeValue(0.0);
+  volume_val_pub_->publish(volume_value);
+}
 
 void vdbfusion_node::publishTSDF() {
   auto header = std_msgs::msg::Header{};

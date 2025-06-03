@@ -8,6 +8,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <std_msgs/msg/float32.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 
 #include "rclcpp_components/register_node_macro.hpp"
@@ -27,6 +28,10 @@ class vdbfusion_node : public rclcpp::Node {
       const sensor_msgs::msg::PointCloud2::SharedPtr pcd_in);
   void tsdfTimerCB();
   void meshTimerCB();
+  void volumeTimerCB();
+
+  void publishVolumeMesh();
+  void publishVolumeValue();
 
   void publishTSDF();
   void publishMesh();
@@ -42,10 +47,14 @@ class vdbfusion_node : public rclcpp::Node {
   // timers
   rclcpp::TimerBase::SharedPtr tsdf_pub_timer_;
   rclcpp::TimerBase::SharedPtr mesh_pub_timer_;
+  rclcpp::TimerBase::SharedPtr volume_pub_timer_;
 
   // publishers
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tsdf_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr mesh_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr
+      volume_mesh_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr volume_val_pub_;
 
   // tf2
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -62,6 +71,13 @@ class vdbfusion_node : public rclcpp::Node {
   bool fill_holes_;
   float min_weight_;
   float max_weight_;
+
+  float volume_x_min_;
+  float volume_x_max_;
+  float volume_y_min_;
+  float volume_y_max_;
+  float volume_z_min_;
+  float volume_z_max_;
 
   std::vector<std::string> pointcloud_inputs_;
   std::string output_topic_;

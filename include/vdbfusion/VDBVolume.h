@@ -70,12 +70,32 @@ class VDBVolume {
   /// @brief Extracts a TriangleMesh as the iso-surface in the actual volume
   [[nodiscard]] std::tuple<std::vector<Eigen::Vector3d>,
                            std::vector<Eigen::Vector3i>>
-  ExtractTriangleMesh(bool fill_holes = true, float min_weight = 0.5) const;
+  ExtractTriangleMesh(bool fill_holes = true, float min_weight = 0.5,
+                      openvdb::FloatGrid::Ptr tsdf = nullptr) const;
+
+  void updateVolume(float x_min = std::numeric_limits<float>::quiet_NaN(),
+                    float x_max = std::numeric_limits<float>::quiet_NaN(),
+                    float y_min = std::numeric_limits<float>::quiet_NaN(),
+                    float y_max = std::numeric_limits<float>::quiet_NaN(),
+                    float z_min = std::numeric_limits<float>::quiet_NaN(),
+                    float z_max = std::numeric_limits<float>::quiet_NaN());
+
+  float getVolumeValue(float min_weight = 0.5);
+
+  openvdb::FloatGrid::Ptr getVolumePtr() const { return volume_; }
 
  public:
   /// OpenVDB Grids modeling the signed distance field and the weight grid
   openvdb::FloatGrid::Ptr tsdf_;
   openvdb::FloatGrid::Ptr weights_;
+  openvdb::FloatGrid::Ptr volume_;
+
+  float volume_x_min_ = std::numeric_limits<float>::lowest();
+  float volume_x_max_ = std::numeric_limits<float>::max();
+  float volume_y_min_ = std::numeric_limits<float>::lowest();
+  float volume_y_max_ = std::numeric_limits<float>::max();
+  float volume_z_min_ = std::numeric_limits<float>::lowest();
+  float volume_z_max_ = std::numeric_limits<float>::max();
 
   /// VDBVolume public properties
   float voxel_size_;
