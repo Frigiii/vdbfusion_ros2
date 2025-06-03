@@ -81,6 +81,7 @@ class vdbfusion_node : public rclcpp::Node {
 
   std::vector<std::string> pointcloud_inputs_;
   std::string output_topic_;
+  std::string boundary_mesh_path_;
   bool use_sim_time_;
   builtin_interfaces::msg::Time latest_pc_header_stamp_;
 };

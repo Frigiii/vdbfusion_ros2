@@ -77,8 +77,6 @@ VDBVolume::VDBVolume(float voxel_size, float sdf_trunc,
   weights_->setTransform(
       openvdb::math::Transform::createLinearTransform(voxel_size_));
   weights_->setGridClass(openvdb::GRID_UNKNOWN);
-
-  volume_ = tsdf_->deepCopy();
 }
 
 void VDBVolume::UpdateTSDF(
@@ -184,48 +182,6 @@ openvdb::FloatGrid::Ptr VDBVolume::Prune(float min_weight) const {
         }
       });
   return clean_tsdf;
-}
-
-void VDBVolume::updateVolume(float x_min, float x_max, float y_min, float y_max,
-                             float z_min, float z_max) {
-  x_min = std::isnan(x_min) ? volume_x_min_ : x_min;
-  x_max = std::isnan(x_max) ? volume_x_max_ : x_max;
-  y_min = std::isnan(y_min) ? volume_y_min_ : y_min;
-  y_max = std::isnan(y_max) ? volume_y_max_ : y_max;
-  z_min = std::isnan(z_min) ? volume_z_min_ : z_min;
-  z_max = std::isnan(z_max) ? volume_z_max_ : z_max;
-
-  // Empty the volume_
-  volume_->tree().clear();
-
-  // Copy the tsdf_ values inside the bbox to the volume_
-  auto tsdf_acc = tsdf_->getAccessor();
-  const openvdb::math::Transform& xform = tsdf_->transform();
-  for (auto iter = tsdf_->cbeginValueOn(); iter; ++iter) {
-    const openvdb::Coord& coord = iter.getCoord();
-    const auto voxel_center = GetVoxelCenter(coord, xform);
-    if (voxel_center.x() >= x_min && voxel_center.x() <= x_max &&
-        voxel_center.y() >= y_min && voxel_center.y() <= y_max &&
-        voxel_center.z() >= z_min && voxel_center.z() <= z_max) {
-      const float value = tsdf_acc.getValue(coord);
-      volume_->tree().setValue(coord, value);
-    }
-  }
-
-  // Update the volume boundary values
-}
-
-float VDBVolume::getVolumeValue(float min_weight) {
-  // Get the number of occupied voxels * the voxel size cubed
-  const auto& vol_acc = volume_->getAccessor();
-  int count = 0;
-  for (auto iter = volume_->cbeginValueOn(); iter; ++iter) {
-    if (vol_acc.isValueOn(iter.getCoord()) &&
-        vol_acc.getValue(iter.getCoord()) < 0.0f) {
-      count++;
-    }
-  }
-  return static_cast<float>(count) * voxel_size_ * voxel_size_ * voxel_size_;
 }
 
 }  // namespace vdbfusion

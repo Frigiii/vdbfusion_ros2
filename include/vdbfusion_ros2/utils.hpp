@@ -124,7 +124,7 @@ visualization_msgs::msg::Marker vdbVolumeVolumetoMeshMarker(
   marker.color.b = 0.0f;
   marker.color.a = 1.0f;
 
-  auto volume_ptr = volume.getVolumePtr();
+  auto volume_ptr = volume.getVolumeExtractorVolume();
   auto [vertices, triangles] =
       volume.ExtractTriangleMesh(fill_holes, min_weight, volume_ptr);
   for (const auto& triangle : triangles) {

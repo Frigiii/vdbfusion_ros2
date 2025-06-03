@@ -70,8 +70,6 @@ vdbfusion_node::vdbfusion_node(const rclcpp::NodeOptions& options)
       output_topic_ + "/tsdf", 10);
   mesh_pub_ = create_publisher<visualization_msgs::msg::Marker>(
       output_topic_ + "/mesh", 10);
-  volume_mesh_pub_ = create_publisher<visualization_msgs::msg::Marker>(
-      output_topic_ + "/volume_mesh", 10);
   volume_val_pub_ = create_publisher<std_msgs::msg::Float32>(
       output_topic_ + "/volume_value", 10);
 
@@ -123,18 +121,7 @@ void vdbfusion_node::initializeParameters() {
   declare_parameter("publish_mesh", true);
   declare_parameter("publish_volume", false);
 
-  declare_parameter("volume_limits.x_min",
-                    std::numeric_limits<float>::quiet_NaN());
-  declare_parameter("volume_limits.x_max",
-                    std::numeric_limits<float>::quiet_NaN());
-  declare_parameter("volume_limits.y_min",
-                    std::numeric_limits<float>::quiet_NaN());
-  declare_parameter("volume_limits.y_max",
-                    std::numeric_limits<float>::quiet_NaN());
-  declare_parameter("volume_limits.z_min",
-                    std::numeric_limits<float>::quiet_NaN());
-  declare_parameter("volume_limits.z_max",
-                    std::numeric_limits<float>::quiet_NaN());
+  declare_parameter("boundary_mesh_path", "");
 }
 
 void vdbfusion_node::retrieveParameters() {
@@ -157,33 +144,7 @@ void vdbfusion_node::retrieveParameters() {
 
   get_parameter("use_sim_time", this->use_sim_time_);
 
-  get_parameter("volume_limits.x_min", volume_x_min_);
-  get_parameter("volume_limits.x_max", volume_x_max_);
-  get_parameter("volume_limits.y_min", volume_y_min_);
-  get_parameter("volume_limits.y_max", volume_y_max_);
-  get_parameter("volume_limits.z_min", volume_z_min_);
-  get_parameter("volume_limits.z_max", volume_z_max_);
-  if (std::isnan(volume_x_min_)) {
-    volume_x_min_ = -std::numeric_limits<float>::infinity();
-  }
-  if (std::isnan(volume_x_max_)) {
-    volume_x_max_ = std::numeric_limits<float>::infinity();
-  }
-  if (std::isnan(volume_y_min_)) {
-    volume_y_min_ = -std::numeric_limits<float>::infinity();
-  }
-  if (std::isnan(volume_y_max_)) {
-    volume_y_max_ = std::numeric_limits<float>::infinity();
-  }
-  if (std::isnan(volume_z_min_)) {
-    volume_z_min_ = -std::numeric_limits<float>::infinity();
-  }
-  if (std::isnan(volume_z_max_)) {
-    volume_z_max_ = std::numeric_limits<float>::infinity();
-  }
-  RCLCPP_INFO(get_logger(), "Volume limits set to: [%f, %f, %f] - [%f, %f, %f]",
-              volume_x_min_, volume_y_min_, volume_z_min_, volume_x_max_,
-              volume_y_max_, volume_z_max_);
+  get_parameter("boundary_mesh_path", boundary_mesh_path_);
 
   RCLCPP_INFO(get_logger(), "Parameters retrieved successfully:");
   RCLCPP_INFO(get_logger(), "   pointcloud_inputs:");
@@ -220,6 +181,8 @@ void vdbfusion_node::retrieveParameters() {
               get_parameter("publish_mesh").as_bool() ? "true" : "false");
   RCLCPP_INFO(get_logger(), "   publish_volume: %s",
               get_parameter("publish_volume").as_bool() ? "true" : "false");
+  RCLCPP_INFO(get_logger(), "   boundary_mesh_path: %s",
+              boundary_mesh_path_.c_str());
 }
 
 void vdbfusion_node::initializeVDBVolume() {
@@ -230,6 +193,7 @@ void vdbfusion_node::initializeVDBVolume() {
   get_parameter("space_carving", space_carving);
   vdb_volume_ = std::make_shared<VDBVolume>(voxel_size, truncation_distance,
                                             space_carving, max_weight_);
+  vdb_volume_->initVolumeExtractor(boundary_mesh_path_);
 }
 
 void vdbfusion_node::integratePointCloudCB(
@@ -280,8 +244,15 @@ void vdbfusion_node::tsdfTimerCB() { this->publishTSDF(); }
 void vdbfusion_node::meshTimerCB() { this->publishMesh(); }
 
 void vdbfusion_node::volumeTimerCB() {
+  vdb_volume_->updateVolumeExtractor();
   this->publishVolumeValue();
   this->publishVolumeMesh();
+}
+
+void vdbfusion_node::publishVolumeValue() {
+  std_msgs::msg::Float32 volume_value;
+  volume_value.data = vdb_volume_->getVolumeValue();
+  volume_val_pub_->publish(volume_value);
 }
 
 void vdbfusion_node::publishVolumeMesh() {
@@ -291,15 +262,7 @@ void vdbfusion_node::publishVolumeMesh() {
   auto mesh_marker = vdbVolumeVolumetoMeshMarker(*vdb_volume_, header,
                                                  fill_holes_, min_weight_);
 
-  volume_mesh_pub_->publish(mesh_marker);
-}
-
-void vdbfusion_node::publishVolumeValue() {
-  vdb_volume_->updateVolume(volume_x_min_, volume_x_max_, volume_y_min_,
-                            volume_y_max_, volume_z_min_, volume_z_max_);
-  std_msgs::msg::Float32 volume_value;
-  volume_value.data = vdb_volume_->getVolumeValue(0.0);
-  volume_val_pub_->publish(volume_value);
+  mesh_pub_->publish(mesh_marker);
 }
 
 void vdbfusion_node::publishTSDF() {

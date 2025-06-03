@@ -30,6 +30,8 @@
 #include <functional>
 #include <tuple>
 
+#include "vdbfusion/VolumeExtractor.h"
+
 namespace vdbfusion {
 
 class VDBVolume {
@@ -73,29 +75,26 @@ class VDBVolume {
   ExtractTriangleMesh(bool fill_holes = true, float min_weight = 0.5,
                       openvdb::FloatGrid::Ptr tsdf = nullptr) const;
 
-  void updateVolume(float x_min = std::numeric_limits<float>::quiet_NaN(),
-                    float x_max = std::numeric_limits<float>::quiet_NaN(),
-                    float y_min = std::numeric_limits<float>::quiet_NaN(),
-                    float y_max = std::numeric_limits<float>::quiet_NaN(),
-                    float z_min = std::numeric_limits<float>::quiet_NaN(),
-                    float z_max = std::numeric_limits<float>::quiet_NaN());
+  void initVolumeExtractor(std::string boundary_mesh_path,
+                           float iso_level = 0.0f) {
+    volume_extractor_ = VolumeExtractor(tsdf_, iso_level);
+    volume_extractor_.loadBoundaryMesh(boundary_mesh_path);
+  }
 
-  float getVolumeValue(float min_weight = 0.5);
+  void updateVolumeExtractor() { volume_extractor_.updateVolume(); }
 
-  openvdb::FloatGrid::Ptr getVolumePtr() const { return volume_; }
+  openvdb::FloatGrid::Ptr getVolumeExtractorVolume() const {
+    return volume_extractor_.getExtractVolume();
+  }
+
+  float getVolumeValue() const { return volume_extractor_.getVolumeValue(); }
 
  public:
   /// OpenVDB Grids modeling the signed distance field and the weight grid
   openvdb::FloatGrid::Ptr tsdf_;
   openvdb::FloatGrid::Ptr weights_;
-  openvdb::FloatGrid::Ptr volume_;
 
-  float volume_x_min_ = std::numeric_limits<float>::lowest();
-  float volume_x_max_ = std::numeric_limits<float>::max();
-  float volume_y_min_ = std::numeric_limits<float>::lowest();
-  float volume_y_max_ = std::numeric_limits<float>::max();
-  float volume_z_min_ = std::numeric_limits<float>::lowest();
-  float volume_z_max_ = std::numeric_limits<float>::max();
+  VolumeExtractor volume_extractor_;
 
   /// VDBVolume public properties
   float voxel_size_;

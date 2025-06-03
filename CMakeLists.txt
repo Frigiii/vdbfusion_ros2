@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   openvdb_vendor
+  tinyobjloader
   rclcpp
   rclcpp_components
   std_msgs
@@ -33,6 +34,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 # build the vdbfusion library from source
 add_library(
   vdbfusion_library
+  src/vdbfusion/VolumeExtractor.cpp
   src/vdbfusion/VDBVolume.cpp
   src/vdbfusion/MarchingCubes.cpp
 )
@@ -47,6 +49,7 @@ target_include_directories(
 
 target_link_libraries(
   vdbfusion_library
+  tinyobjloader
   ${OpenVDB_LIBRARIES}
 )
 
