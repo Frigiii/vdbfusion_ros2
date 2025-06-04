@@ -55,7 +55,8 @@ struct hash_eigen {
 namespace vdbfusion {
 std::tuple<std::vector<Eigen::Vector3d>, std::vector<Eigen::Vector3i>>
 VDBVolume::ExtractTriangleMesh(bool fill_holes, float min_weight,
-                               openvdb::FloatGrid::Ptr tsdf) const {
+                               openvdb::FloatGrid::Ptr tsdf,
+                               float iso_level) const {
   tsdf = tsdf ? tsdf : tsdf_;
 
   // implementation of marching cubes, based on Open3D
@@ -92,7 +93,7 @@ VDBVolume::ExtractTriangleMesh(bool fill_holes, float min_weight,
         break;
       }
       f[i] = tsdf_acc.getValue(idx);
-      if (f[i] < 0.0f) {
+      if (f[i] < iso_level) {
         cube_index |= (1 << i);
       }
     }

@@ -72,12 +72,7 @@ class vdbfusion_node : public rclcpp::Node {
   float min_weight_;
   float max_weight_;
 
-  float volume_x_min_;
-  float volume_x_max_;
-  float volume_y_min_;
-  float volume_y_max_;
-  float volume_z_min_;
-  float volume_z_max_;
+  float iso_level_;
 
   std::vector<std::string> pointcloud_inputs_;
   std::string output_topic_;

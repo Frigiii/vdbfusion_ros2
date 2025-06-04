@@ -73,7 +73,8 @@ class VDBVolume {
   [[nodiscard]] std::tuple<std::vector<Eigen::Vector3d>,
                            std::vector<Eigen::Vector3i>>
   ExtractTriangleMesh(bool fill_holes = true, float min_weight = 0.5,
-                      openvdb::FloatGrid::Ptr tsdf = nullptr) const;
+                      openvdb::FloatGrid::Ptr tsdf = nullptr,
+                      float iso_level = 0.0f) const;
 
   void initVolumeExtractor(std::string boundary_mesh_path,
                            float iso_level = 0.0f) {
@@ -101,6 +102,7 @@ class VDBVolume {
   float sdf_trunc_;
   bool space_carving_;
   float max_weight_;
+  float iso_level_;
 };
 
 }  // namespace vdbfusion

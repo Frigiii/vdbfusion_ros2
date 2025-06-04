@@ -138,6 +138,7 @@ void vdbfusion_node::retrieveParameters() {
   get_parameter("fill_holes", fill_holes_);
   get_parameter("min_weight", min_weight_);
   get_parameter("max_weight", max_weight_);
+  get_parameter("iso_level", iso_level_);
   get_parameter("static_frame_id", static_frame_id_);
 
   int timestamp_tolerance_ns = 10000;
@@ -170,8 +171,7 @@ void vdbfusion_node::retrieveParameters() {
               fill_holes_ ? "true" : "false");
   RCLCPP_INFO(get_logger(), "   min_weight: %f", min_weight_);
   RCLCPP_INFO(get_logger(), "   max_weight: %f", max_weight_);
-  RCLCPP_INFO(get_logger(), "   iso_level: %f",
-              get_parameter("iso_level").as_double());
+  RCLCPP_INFO(get_logger(), "   iso_level: %f", iso_level_);
   RCLCPP_INFO(get_logger(), "   static_frame_id: %s", static_frame_id_.c_str());
   RCLCPP_INFO(get_logger(), "   timestamp_tolerance_ns: %ld ns",
               timestamp_tolerance_ns);
@@ -190,15 +190,14 @@ void vdbfusion_node::retrieveParameters() {
 }
 
 void vdbfusion_node::initializeVDBVolume() {
-  float voxel_size, truncation_distance, iso_level;
+  float voxel_size, truncation_distance;
   bool space_carving;
   get_parameter("voxel_size", voxel_size);
   get_parameter("truncation_distance", truncation_distance);
   get_parameter("space_carving", space_carving);
-  get_parameter("iso_level", iso_level);
   vdb_volume_ = std::make_shared<VDBVolume>(voxel_size, truncation_distance,
                                             space_carving, max_weight_);
-  vdb_volume_->initVolumeExtractor(boundary_mesh_path_, iso_level);
+  vdb_volume_->initVolumeExtractor(boundary_mesh_path_, iso_level_);
 }
 
 void vdbfusion_node::integratePointCloudCB(
@@ -267,8 +266,8 @@ void vdbfusion_node::publishVolumeMesh() {
   auto header = std_msgs::msg::Header{};
   header.stamp = latest_pc_header_stamp_;
   header.frame_id = static_frame_id_;
-  auto mesh_marker = vdbVolumeVolumetoMeshMarker(*vdb_volume_, header,
-                                                 fill_holes_, min_weight_);
+  auto mesh_marker = vdbVolumeVolumetoMeshMarker(
+      *vdb_volume_, header, fill_holes_, min_weight_, iso_level_);
 
   mesh_pub_->publish(mesh_marker);
 }
