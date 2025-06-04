@@ -113,6 +113,7 @@ void vdbfusion_node::initializeParameters() {
   declare_parameter("fill_holes", false);
   declare_parameter("min_weight", 0.0f);
   declare_parameter("max_weight", 100.0f);
+  declare_parameter("iso_level", 0.0f);
 
   declare_parameter("timestamp_tolerance_ns", 10000);
   declare_parameter("static_frame_id", "world");
@@ -169,6 +170,8 @@ void vdbfusion_node::retrieveParameters() {
               fill_holes_ ? "true" : "false");
   RCLCPP_INFO(get_logger(), "   min_weight: %f", min_weight_);
   RCLCPP_INFO(get_logger(), "   max_weight: %f", max_weight_);
+  RCLCPP_INFO(get_logger(), "   iso_level: %f",
+              get_parameter("iso_level").as_double());
   RCLCPP_INFO(get_logger(), "   static_frame_id: %s", static_frame_id_.c_str());
   RCLCPP_INFO(get_logger(), "   timestamp_tolerance_ns: %ld ns",
               timestamp_tolerance_ns);
@@ -187,14 +190,15 @@ void vdbfusion_node::retrieveParameters() {
 }
 
 void vdbfusion_node::initializeVDBVolume() {
-  float voxel_size, truncation_distance;
+  float voxel_size, truncation_distance, iso_level;
   bool space_carving;
   get_parameter("voxel_size", voxel_size);
   get_parameter("truncation_distance", truncation_distance);
   get_parameter("space_carving", space_carving);
+  get_parameter("iso_level", iso_level);
   vdb_volume_ = std::make_shared<VDBVolume>(voxel_size, truncation_distance,
                                             space_carving, max_weight_);
-  vdb_volume_->initVolumeExtractor(boundary_mesh_path_);
+  vdb_volume_->initVolumeExtractor(boundary_mesh_path_, iso_level);
 }
 
 void vdbfusion_node::integratePointCloudCB(
