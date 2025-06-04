@@ -29,6 +29,7 @@ class vdbfusion_node : public rclcpp::Node {
   void tsdfTimerCB();
   void meshTimerCB();
   void volumeTimerCB();
+  void punishNotUpdatedVoxelsCB();
 
   void publishVolumeMesh();
   void publishVolumeValue();
@@ -48,6 +49,7 @@ class vdbfusion_node : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr tsdf_pub_timer_;
   rclcpp::TimerBase::SharedPtr mesh_pub_timer_;
   rclcpp::TimerBase::SharedPtr volume_pub_timer_;
+  rclcpp::TimerBase::SharedPtr punish_not_updated_voxels_timer_;
 
   // publishers
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tsdf_pub_;

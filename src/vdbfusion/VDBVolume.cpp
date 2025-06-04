@@ -61,11 +61,15 @@ namespace vdbfusion {
 
 VDBVolume::VDBVolume(float voxel_size, float sdf_trunc,
                      bool space_carving /* = false*/,
-                     float max_weight /* = 100.0f*/)
+                     float max_weight /* = 100.0f*/,
+                     float weight_punish /* = 0.0f*/,
+                     float tsdf_punish /* = 0.0f*/)
     : voxel_size_(voxel_size),
       sdf_trunc_(sdf_trunc),
       space_carving_(space_carving),
-      max_weight_(max_weight) {
+      max_weight_(max_weight),
+      weight_punish_(weight_punish),
+      tsdf_punish_(tsdf_punish) {
   tsdf_ = openvdb::FloatGrid::create(sdf_trunc_);
   tsdf_->setName("D(x): signed distance grid");
   tsdf_->setTransform(
@@ -77,6 +81,12 @@ VDBVolume::VDBVolume(float voxel_size, float sdf_trunc,
   weights_->setTransform(
       openvdb::math::Transform::createLinearTransform(voxel_size_));
   weights_->setGridClass(openvdb::GRID_UNKNOWN);
+
+  updated_ = openvdb::BoolGrid::create(false);
+  updated_->setName("Updated Voxels");
+  updated_->setTransform(
+      openvdb::math::Transform::createLinearTransform(voxel_size_));
+  updated_->setGridClass(openvdb::GRID_UNKNOWN);
 }
 
 void VDBVolume::UpdateTSDF(
@@ -121,8 +131,9 @@ void VDBVolume::Integrate(
   const openvdb::Vec3R eye(origin.x(), origin.y(), origin.z());
 
   // Get the "unsafe" version of the grid acessors
-  auto tsdf_acc = tsdf_->getUnsafeAccessor();
-  auto weights_acc = weights_->getUnsafeAccessor();
+  auto tsdf_acc = tsdf_->getAccessor();
+  auto weights_acc = weights_->getAccessor();
+  auto updated_acc = updated_->getAccessor();
 
   // Launch an for_each execution, use std::execution::par to parallelize this
   // region
@@ -157,6 +168,7 @@ void VDBVolume::Integrate(
             (last_tsdf * last_weight + tsdf * weight) / (new_weight);
         tsdf_acc.setValue(voxel, new_tsdf);
         weights_acc.setValue(voxel, std::min(new_weight, max_weight_));
+        updated_acc.setValue(voxel, true);
       }
     } while (dda.step());
   });
@@ -182,6 +194,40 @@ openvdb::FloatGrid::Ptr VDBVolume::Prune(float min_weight) const {
         }
       });
   return clean_tsdf;
+}
+
+void VDBVolume::PunishNotUpdatedVoxels() {
+  // Punish the not updated voxels by increasing their tsdf value and lowering
+  // their weights
+  const float background = sdf_trunc_;
+  const float weight_punish = weight_punish_;
+  const float tsdf_punish = tsdf_punish_;
+
+  // quick check if updated_, tsdf_ and weights_ are initialized
+  if (!updated_ || !tsdf_ || !weights_) return;
+
+  auto updated_acc = updated_->getAccessor();
+  auto tsdf_acc = tsdf_->getAccessor();
+  auto weights_acc = weights_->getAccessor();
+
+  for (auto iter = tsdf_->beginValueOn(); iter.test(); ++iter) {
+    const auto& voxel = iter.getCoord();
+    if (!updated_acc.isValueOn(voxel)) {
+      // Punish the TSDF and weight values of the not updated voxel
+      float new_tsdf_value = iter.getValue() + tsdf_punish;
+      float new_weight_value = weights_acc.getValue(voxel) - weight_punish;
+      if (new_tsdf_value > background || new_weight_value < 0.0f) {
+        tsdf_acc.setValueOff(voxel);
+        weights_acc.setValueOff(voxel);
+      } else {
+        tsdf_acc.setValue(voxel, new_tsdf_value);
+        weights_acc.setValue(voxel, new_weight_value);
+      }
+    } else {
+      // Reset the updated voxel
+      updated_acc.setValueOff(voxel);
+    }
+  }
 }
 
 }  // namespace vdbfusion

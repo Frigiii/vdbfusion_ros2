@@ -37,7 +37,8 @@ namespace vdbfusion {
 class VDBVolume {
  public:
   VDBVolume(float voxel_size, float sdf_trunc, bool space_carving = false,
-            float max_weight = 100.0f);
+            float max_weight = 100.0f, float weight_punish = 0.0f,
+            float tsdf_punish = 0.0f);
   ~VDBVolume() = default;
 
  public:
@@ -76,6 +77,8 @@ class VDBVolume {
                       openvdb::FloatGrid::Ptr tsdf = nullptr,
                       float iso_level = 0.0f) const;
 
+  void PunishNotUpdatedVoxels();
+
   void initVolumeExtractor(std::string boundary_mesh_path,
                            float iso_level = 0.0f) {
     volume_extractor_ = VolumeExtractor(tsdf_, iso_level);
@@ -94,6 +97,7 @@ class VDBVolume {
   /// OpenVDB Grids modeling the signed distance field and the weight grid
   openvdb::FloatGrid::Ptr tsdf_;
   openvdb::FloatGrid::Ptr weights_;
+  openvdb::BoolGrid::Ptr updated_;
 
   VolumeExtractor volume_extractor_;
 
@@ -103,6 +107,9 @@ class VDBVolume {
   bool space_carving_;
   float max_weight_;
   float iso_level_;
+
+  float weight_punish_;
+  float tsdf_punish_;
 };
 
 }  // namespace vdbfusion

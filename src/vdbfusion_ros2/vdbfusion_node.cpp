@@ -94,6 +94,14 @@ vdbfusion_node::vdbfusion_node(const rclcpp::NodeOptions& options)
                           std::bind(&vdbfusion_node::volumeTimerCB, this));
   }
 
+  // Tsdf punisher timer
+  if (get_parameter("punish_not_updated_voxels").as_bool()) {
+    auto punish_interval_ms = get_parameter("punish_interval_ms").as_int();
+    punish_not_updated_voxels_timer_ = create_wall_timer(
+        std::chrono::milliseconds(punish_interval_ms),
+        std::bind(&vdbfusion_node::punishNotUpdatedVoxelsCB, this));
+  }
+
   RCLCPP_INFO(get_logger(), "Successfully initialized vdbfusion_node");
 }
 
@@ -122,6 +130,11 @@ void vdbfusion_node::initializeParameters() {
   declare_parameter("publish_tsdf", true);
   declare_parameter("publish_mesh", true);
   declare_parameter("publish_volume", false);
+
+  declare_parameter("punish_not_updated_voxels", false);
+  declare_parameter("punish_interval_ms", 1000);
+  declare_parameter("weights_punish", 0.0f);
+  declare_parameter("tsdf_punish", 0.0f);
 
   declare_parameter("boundary_mesh_path", "");
 }
@@ -185,18 +198,34 @@ void vdbfusion_node::retrieveParameters() {
               get_parameter("publish_mesh").as_bool() ? "true" : "false");
   RCLCPP_INFO(get_logger(), "   publish_volume: %s",
               get_parameter("publish_volume").as_bool() ? "true" : "false");
+  RCLCPP_INFO(
+      get_logger(), "   punish_not_updated_voxels: %s",
+      get_parameter("punish_not_updated_voxels").as_bool() ? "true" : "false");
+  RCLCPP_INFO(get_logger(), "   punish_interval_ms: %d",
+              get_parameter("punish_interval_ms").as_int());
+  RCLCPP_INFO(get_logger(), "   weights_punish: %f",
+              get_parameter("weights_punish").as_double());
+  RCLCPP_INFO(get_logger(), "   tsdf_punish: %f",
+              get_parameter("tsdf_punish").as_double());
   RCLCPP_INFO(get_logger(), "   boundary_mesh_path: %s",
               boundary_mesh_path_.c_str());
 }
 
 void vdbfusion_node::initializeVDBVolume() {
-  float voxel_size, truncation_distance;
+  float voxel_size, truncation_distance, weights_punish, tsdf_punish;
   bool space_carving;
   get_parameter("voxel_size", voxel_size);
   get_parameter("truncation_distance", truncation_distance);
   get_parameter("space_carving", space_carving);
+  get_parameter("weights_punish", weights_punish);
+  get_parameter("tsdf_punish", tsdf_punish);
+  auto punish_interval_ms = get_parameter("punish_interval_ms").as_int();
+  weights_punish =
+      weights_punish * static_cast<float>(punish_interval_ms) / 1000.0f ;
+  tsdf_punish = tsdf_punish * static_cast<float>(punish_interval_ms) / 1000.0f ;
   vdb_volume_ = std::make_shared<VDBVolume>(voxel_size, truncation_distance,
-                                            space_carving, max_weight_);
+                                            space_carving, max_weight_,
+                                            weights_punish, tsdf_punish);
   vdb_volume_->initVolumeExtractor(boundary_mesh_path_, iso_level_);
 }
 
@@ -254,6 +283,10 @@ void vdbfusion_node::volumeTimerCB() {
   vdb_volume_->updateVolumeExtractor();
   this->publishVolumeValue();
   this->publishVolumeMesh();
+}
+
+void vdbfusion_node::punishNotUpdatedVoxelsCB() {
+  vdb_volume_->PunishNotUpdatedVoxels();
 }
 
 void vdbfusion_node::publishVolumeValue() {
