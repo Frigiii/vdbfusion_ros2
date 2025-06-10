@@ -37,7 +37,7 @@ namespace vdbfusion {
 class VDBVolume {
  public:
   VDBVolume(float voxel_size, float sdf_trunc, bool space_carving = false,
-            float max_weight = 100.0f, float weight_punish = 0.0f,
+            float min_var = 100.0f, float var_punish = 0.0f,
             float tsdf_punish = 0.0f);
   ~VDBVolume() = default;
 
@@ -46,34 +46,34 @@ class VDBVolume {
   /// tsdf_ volume.
   void Integrate(const std::vector<Eigen::Vector3d>& points,
                  const Eigen::Vector3d& origin,
-                 const std::function<float(float)>& weighting_function);
+                 const std::function<float(float)>& variance_function);
 
   /// @brief Integrates a new (globally aligned) PointCloud into the current
   /// tsdf_ volume.
   void inline Integrate(const std::vector<Eigen::Vector3d>& points,
                         const Eigen::Matrix4d& extrinsics,
-                        const std::function<float(float)>& weighting_function) {
+                        const std::function<float(float)>& variance_function) {
     const Eigen::Vector3d& origin = extrinsics.block<3, 1>(0, 3);
-    Integrate(points, origin, weighting_function);
+    Integrate(points, origin, variance_function);
   }
 
   /// @brief Integrate incoming TSDF grid inside the current volume using the
   /// TSDF equations
   void Integrate(openvdb::FloatGrid::Ptr grid,
-                 const std::function<float(float)>& weighting_function);
+                 const std::function<float(float)>& variance_function);
 
   /// @brief Fuse a new given sdf value at the given voxel location, thread-safe
   void UpdateTSDF(const float& sdf, const openvdb::Coord& voxel,
-                  const std::function<float(float)>& weighting_function);
+                  const std::function<float(float)>& variance_function);
 
   /// @brief Prune TSDF grids, ideal utility to cleanup a D(x) volume before
   /// exporting it
-  openvdb::FloatGrid::Ptr Prune(float min_weight) const;
+  openvdb::FloatGrid::Ptr Prune(float max_var) const;
 
   /// @brief Extracts a TriangleMesh as the iso-surface in the actual volume
   [[nodiscard]] std::tuple<std::vector<Eigen::Vector3d>,
                            std::vector<Eigen::Vector3i>>
-  ExtractTriangleMesh(bool fill_holes = true, float min_weight = 0.5,
+  ExtractTriangleMesh(bool fill_holes = true, float max_var = 0.5,
                       openvdb::FloatGrid::Ptr tsdf = nullptr,
                       float iso_level = 0.0f) const;
 
@@ -94,9 +94,9 @@ class VDBVolume {
   float getVolumeValue() const { return volume_extractor_.getVolumeValue(); }
 
  public:
-  /// OpenVDB Grids modeling the signed distance field and the weight grid
+  /// OpenVDB Grids modeling the signed distance field and the var grid
   openvdb::FloatGrid::Ptr tsdf_;
-  openvdb::FloatGrid::Ptr weights_;
+  openvdb::FloatGrid::Ptr variance_;
   openvdb::BoolGrid::Ptr updated_;
 
   VolumeExtractor volume_extractor_;
@@ -105,10 +105,11 @@ class VDBVolume {
   float voxel_size_;
   float sdf_trunc_;
   bool space_carving_;
-  float max_weight_;
+  float max_var_;
   float iso_level_;
+  float min_var_ = 0.0f;  // default value for variance
 
-  float weight_punish_;
+  float var_punish_;
   float tsdf_punish_;
 };
 

@@ -119,8 +119,8 @@ void vdbfusion_node::initializeParameters() {
   declare_parameter("max_range", 3.0f);
 
   declare_parameter("fill_holes", false);
-  declare_parameter("min_weight", 0.0f);
-  declare_parameter("max_weight", 100.0f);
+  declare_parameter("max_var", 0.0f);
+  declare_parameter("min_var", 0.0f);
   declare_parameter("iso_level", 0.0f);
 
   declare_parameter("timestamp_tolerance_ns", 10000);
@@ -133,7 +133,7 @@ void vdbfusion_node::initializeParameters() {
 
   declare_parameter("punish_not_updated_voxels", false);
   declare_parameter("punish_interval_ms", 1000);
-  declare_parameter("weights_punish", 0.0f);
+  declare_parameter("var_punish", 0.0f);
   declare_parameter("tsdf_punish", 0.0f);
 
   declare_parameter("boundary_mesh_path", "");
@@ -149,8 +149,8 @@ void vdbfusion_node::retrieveParameters() {
   get_parameter("max_range", max_range_);
 
   get_parameter("fill_holes", fill_holes_);
-  get_parameter("min_weight", min_weight_);
-  get_parameter("max_weight", max_weight_);
+  get_parameter("max_var", max_var_);
+  get_parameter("min_var", min_var_);
   get_parameter("iso_level", iso_level_);
   get_parameter("static_frame_id", static_frame_id_);
 
@@ -182,8 +182,8 @@ void vdbfusion_node::retrieveParameters() {
   RCLCPP_INFO(get_logger(), "   max_range: %f", max_range_);
   RCLCPP_INFO(get_logger(), "   fill_holes: %s",
               fill_holes_ ? "true" : "false");
-  RCLCPP_INFO(get_logger(), "   min_weight: %f", min_weight_);
-  RCLCPP_INFO(get_logger(), "   max_weight: %f", max_weight_);
+  RCLCPP_INFO(get_logger(), "   max_var: %f", max_var_);
+  RCLCPP_INFO(get_logger(), "   min_var: %f", min_var_);
   RCLCPP_INFO(get_logger(), "   iso_level: %f", iso_level_);
   RCLCPP_INFO(get_logger(), "   static_frame_id: %s", static_frame_id_.c_str());
   RCLCPP_INFO(get_logger(), "   timestamp_tolerance_ns: %ld ns",
@@ -203,8 +203,8 @@ void vdbfusion_node::retrieveParameters() {
       get_parameter("punish_not_updated_voxels").as_bool() ? "true" : "false");
   RCLCPP_INFO(get_logger(), "   punish_interval_ms: %d",
               get_parameter("punish_interval_ms").as_int());
-  RCLCPP_INFO(get_logger(), "   weights_punish: %f",
-              get_parameter("weights_punish").as_double());
+  RCLCPP_INFO(get_logger(), "   var_punish: %f",
+              get_parameter("var_punish").as_double());
   RCLCPP_INFO(get_logger(), "   tsdf_punish: %f",
               get_parameter("tsdf_punish").as_double());
   RCLCPP_INFO(get_logger(), "   boundary_mesh_path: %s",
@@ -212,20 +212,19 @@ void vdbfusion_node::retrieveParameters() {
 }
 
 void vdbfusion_node::initializeVDBVolume() {
-  float voxel_size, truncation_distance, weights_punish, tsdf_punish;
+  float voxel_size, truncation_distance, var_punish, tsdf_punish;
   bool space_carving;
   get_parameter("voxel_size", voxel_size);
   get_parameter("truncation_distance", truncation_distance);
   get_parameter("space_carving", space_carving);
-  get_parameter("weights_punish", weights_punish);
+  get_parameter("var_punish", var_punish);
   get_parameter("tsdf_punish", tsdf_punish);
   auto punish_interval_ms = get_parameter("punish_interval_ms").as_int();
-  weights_punish =
-      weights_punish * static_cast<float>(punish_interval_ms) / 1000.0f ;
-  tsdf_punish = tsdf_punish * static_cast<float>(punish_interval_ms) / 1000.0f ;
+  var_punish = var_punish * static_cast<float>(punish_interval_ms) / 1000.0f;
+  tsdf_punish = tsdf_punish * static_cast<float>(punish_interval_ms) / 1000.0f;
   vdb_volume_ = std::make_shared<VDBVolume>(voxel_size, truncation_distance,
-                                            space_carving, max_weight_,
-                                            weights_punish, tsdf_punish);
+                                            space_carving, min_var_,
+                                            var_punish, tsdf_punish);
   vdb_volume_->initVolumeExtractor(boundary_mesh_path_, iso_level_);
 }
 
@@ -271,7 +270,7 @@ void vdbfusion_node::integratePointCloudCB(
     auto origin = Eigen::Vector3d{x, y, z};
 
     vdb_volume_->Integrate(scan, origin,
-                           [](float /* unuused*/) { return 1.0; });
+                           [](float sdf) { return sdf < 0 ? 1.0 : 0.5; });
   }
 }
 
@@ -300,7 +299,7 @@ void vdbfusion_node::publishVolumeMesh() {
   header.stamp = latest_pc_header_stamp_;
   header.frame_id = static_frame_id_;
   auto mesh_marker = vdbVolumeVolumetoMeshMarker(
-      *vdb_volume_, header, fill_holes_, min_weight_, iso_level_);
+      *vdb_volume_, header, fill_holes_, max_var_, iso_level_);
 
   mesh_pub_->publish(mesh_marker);
 }
@@ -309,7 +308,7 @@ void vdbfusion_node::publishTSDF() {
   auto header = std_msgs::msg::Header{};
   header.stamp = latest_pc_header_stamp_;
   header.frame_id = static_frame_id_;
-  auto tsdf_marker = vdbVolumeToCubeMarker(*vdb_volume_, header, min_weight_);
+  auto tsdf_marker = vdbVolumeToCubeMarker(*vdb_volume_, header, max_var_);
 
   tsdf_pub_->publish(tsdf_marker);
 }
@@ -319,7 +318,7 @@ void vdbfusion_node::publishMesh() {
   header.stamp = latest_pc_header_stamp_;
   header.frame_id = static_frame_id_;
   auto mesh_marker =
-      vdbVolumeToMeshMarker(*vdb_volume_, header, fill_holes_, min_weight_);
+      vdbVolumeToMeshMarker(*vdb_volume_, header, fill_holes_, max_var_);
 
   mesh_pub_->publish(mesh_marker);
 }

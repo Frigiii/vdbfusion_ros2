@@ -71,8 +71,8 @@ class vdbfusion_node : public rclcpp::Node {
   float max_range_;
 
   bool fill_holes_;
-  float min_weight_;
-  float max_weight_;
+  float max_var_;
+  float min_var_;
 
   float iso_level_;
 

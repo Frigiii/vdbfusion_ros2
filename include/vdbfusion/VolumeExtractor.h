@@ -33,7 +33,7 @@ class VolumeExtractor {
   /// @brief Extracts a TriangleMesh as the iso-surface in the actual volume
   [[nodiscard]] std::tuple<std::vector<Eigen::Vector3d>,
                            std::vector<Eigen::Vector3i>>
-  ExtractTriangleMesh(bool fill_holes = true, float min_weight = 0.5) const;
+  ExtractTriangleMesh(bool fill_holes = true, float max_var = 0.5) const;
 
   /// @brief Creates the intersection of volume_.tsdf_ and boundary_ and
   /// stores the result in extract_volume_. Additionally updates the

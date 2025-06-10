@@ -61,14 +61,13 @@ namespace vdbfusion {
 
 VDBVolume::VDBVolume(float voxel_size, float sdf_trunc,
                      bool space_carving /* = false*/,
-                     float max_weight /* = 100.0f*/,
-                     float weight_punish /* = 0.0f*/,
+                     float min_var /* = 100.0f*/, float var_punish /* = 0.0f*/,
                      float tsdf_punish /* = 0.0f*/)
     : voxel_size_(voxel_size),
       sdf_trunc_(sdf_trunc),
       space_carving_(space_carving),
-      max_weight_(max_weight),
-      weight_punish_(weight_punish),
+      min_var_(min_var),
+      var_punish_(var_punish),
       tsdf_punish_(tsdf_punish) {
   tsdf_ = openvdb::FloatGrid::create(sdf_trunc_);
   tsdf_->setName("D(x): signed distance grid");
@@ -76,11 +75,11 @@ VDBVolume::VDBVolume(float voxel_size, float sdf_trunc,
       openvdb::math::Transform::createLinearTransform(voxel_size_));
   tsdf_->setGridClass(openvdb::GRID_LEVEL_SET);
 
-  weights_ = openvdb::FloatGrid::create(0.0f);
-  weights_->setName("W(x): weights grid");
-  weights_->setTransform(
+  variance_ = openvdb::FloatGrid::create(100.0f);
+  variance_->setName("var(x): variance grid");
+  variance_->setTransform(
       openvdb::math::Transform::createLinearTransform(voxel_size_));
-  weights_->setGridClass(openvdb::GRID_UNKNOWN);
+  variance_->setGridClass(openvdb::GRID_UNKNOWN);
 
   updated_ = openvdb::BoolGrid::create(false);
   updated_->setName("Updated Voxels");
@@ -91,36 +90,37 @@ VDBVolume::VDBVolume(float voxel_size, float sdf_trunc,
 
 void VDBVolume::UpdateTSDF(
     const float& sdf, const openvdb::Coord& voxel,
-    const std::function<float(float)>& weighting_function) {
+    const std::function<float(float)>& variance_function) {
   using AccessorRW = openvdb::tree::ValueAccessorRW<openvdb::FloatTree>;
   if (sdf > -sdf_trunc_) {
     AccessorRW tsdf_acc = AccessorRW(tsdf_->tree());
-    AccessorRW weights_acc = AccessorRW(weights_->tree());
-    const float tsdf = std::min(sdf_trunc_, sdf);
-    const float weight = weighting_function(sdf);
-    const float last_weight = weights_acc.getValue(voxel);
-    const float last_tsdf = tsdf_acc.getValue(voxel);
-    const float new_weight = weight + last_weight;
+    AccessorRW variance_acc = AccessorRW(variance_->tree());
+
+    const float obs_tsdf = std::min(sdf_trunc_, sdf);
+    const float obs_var = variance_function(sdf);
+    const float prior_var = variance_acc.getValue(voxel);
+    const float prior_tsdf = tsdf_acc.getValue(voxel);
+    const float new_var = (1 / (1 / prior_var + 1 / obs_var));
     const float new_tsdf =
-        (last_tsdf * last_weight + tsdf * weight) / (new_weight);
+        (obs_var * prior_tsdf + prior_var * obs_tsdf) / (obs_var + prior_var);
     tsdf_acc.setValue(voxel, new_tsdf);
-    weights_acc.setValue(voxel, std::min(new_weight, max_weight_));
+    variance_acc.setValue(voxel, std::max(min_var_, new_var));
   }
 }
 
 void VDBVolume::Integrate(
     openvdb::FloatGrid::Ptr grid,
-    const std::function<float(float)>& weighting_function) {
+    const std::function<float(float)>& variance_function) {
   for (auto iter = grid->cbeginValueOn(); iter.test(); ++iter) {
     const auto& sdf = iter.getValue();
     const auto& voxel = iter.getCoord();
-    this->UpdateTSDF(sdf, voxel, weighting_function);
+    this->UpdateTSDF(sdf, voxel, variance_function);
   }
 }
 
 void VDBVolume::Integrate(
     const std::vector<Eigen::Vector3d>& points, const Eigen::Vector3d& origin,
-    const std::function<float(float)>& weighting_function) {
+    const std::function<float(float)>& variance_function) {
   if (points.empty()) {
     std::cerr << "PointCloud provided is empty\n";
     return;
@@ -132,7 +132,7 @@ void VDBVolume::Integrate(
 
   // Get the "unsafe" version of the grid acessors
   auto tsdf_acc = tsdf_->getAccessor();
-  auto weights_acc = weights_->getAccessor();
+  auto variance_acc = variance_->getAccessor();
   auto updated_acc = updated_->getAccessor();
 
   // Launch an for_each execution, use std::execution::par to parallelize this
@@ -159,23 +159,23 @@ void VDBVolume::Integrate(
       const auto voxel_center = GetVoxelCenter(voxel, xform);
       const auto sdf = ComputeSDF(origin, point, voxel_center);
       if (sdf > -sdf_trunc_) {
-        const float tsdf = std::min(sdf_trunc_, sdf);
-        const float weight = weighting_function(sdf);
-        const float last_weight = weights_acc.getValue(voxel);
-        const float last_tsdf = tsdf_acc.getValue(voxel);
-        const float new_weight = weight + last_weight;
-        const float new_tsdf =
-            (last_tsdf * last_weight + tsdf * weight) / (new_weight);
+        const float obs_tsdf = std::min(sdf_trunc_, sdf);
+        const float obs_var = variance_function(sdf);
+        const float prior_var = variance_acc.getValue(voxel);
+        const float prior_tsdf = tsdf_acc.getValue(voxel);
+        const float new_var = (1 / (1 / prior_var + 1 / obs_var));
+        const float new_tsdf = (obs_var * prior_tsdf + prior_var * obs_tsdf) /
+                               (obs_var + prior_var);
         tsdf_acc.setValue(voxel, new_tsdf);
-        weights_acc.setValue(voxel, std::min(new_weight, max_weight_));
+        variance_acc.setValue(voxel, std::max(min_var_, new_var));
         updated_acc.setValue(voxel, true);
       }
     } while (dda.step());
   });
 }
 
-openvdb::FloatGrid::Ptr VDBVolume::Prune(float min_weight) const {
-  const auto weights = weights_->tree();
+openvdb::FloatGrid::Ptr VDBVolume::Prune(float min_var) const {
+  const auto vars = variance_->tree();
   const auto tsdf = tsdf_->tree();
   const auto background = sdf_trunc_;
   openvdb::FloatGrid::Ptr clean_tsdf = openvdb::FloatGrid::create(sdf_trunc_);
@@ -184,8 +184,8 @@ openvdb::FloatGrid::Ptr VDBVolume::Prune(float min_weight) const {
       openvdb::math::Transform::createLinearTransform(voxel_size_));
   clean_tsdf->setGridClass(openvdb::GRID_LEVEL_SET);
   clean_tsdf->tree().combine2Extended(
-      tsdf, weights, [=](openvdb::CombineArgs<float>& args) {
-        if (args.aIsActive() && args.b() > min_weight) {
+      tsdf, vars, [=](openvdb::CombineArgs<float>& args) {
+        if (args.aIsActive() && args.b() > min_var) {
           args.setResult(args.a());
           args.setResultIsActive(true);
         } else {
@@ -197,35 +197,38 @@ openvdb::FloatGrid::Ptr VDBVolume::Prune(float min_weight) const {
 }
 
 void VDBVolume::PunishNotUpdatedVoxels() {
-  // Punish the not updated voxels by increasing their tsdf value and lowering
-  // their weights
+  // Punish the not updated voxels by increasing their tsdf value and increasing
+  // their vars
   const float background = sdf_trunc_;
-  const float weight_punish = weight_punish_;
+  const float var_punish = var_punish_;
   const float tsdf_punish = tsdf_punish_;
 
-  // quick check if updated_, tsdf_ and weights_ are initialized
-  if (!updated_ || !tsdf_ || !weights_) return;
+  // quick check if updated_, tsdf_ and variance_ are initialized
+  if (!updated_ || !tsdf_ || !variance_) return;
 
   auto updated_acc = updated_->getAccessor();
   auto tsdf_acc = tsdf_->getAccessor();
-  auto weights_acc = weights_->getAccessor();
+  auto variance_acc = variance_->getAccessor();
 
   for (auto iter = tsdf_->beginValueOn(); iter.test(); ++iter) {
     const auto& voxel = iter.getCoord();
     if (!updated_acc.isValueOn(voxel)) {
-      // Punish the TSDF and weight values of the not updated voxel
+      // Punish the TSDF values of the not updated voxel
       float new_tsdf_value = iter.getValue() + tsdf_punish;
-      float new_weight_value = weights_acc.getValue(voxel) - weight_punish;
-      if (new_tsdf_value > background || new_weight_value < 0.0f) {
+      if (new_tsdf_value > background) {
         tsdf_acc.setValueOff(voxel);
-        weights_acc.setValueOff(voxel);
       } else {
         tsdf_acc.setValue(voxel, new_tsdf_value);
-        weights_acc.setValue(voxel, new_weight_value);
       }
     } else {
       // Reset the updated voxel
       updated_acc.setValueOff(voxel);
+    }
+    float new_var = variance_acc.getValue(voxel) + var_punish;
+    if (new_var > 100.0f) {
+      variance_acc.setValueOff(voxel);
+    } else {
+      variance_acc.setValue(voxel, std::max(min_var_, new_var));
     }
   }
 }
