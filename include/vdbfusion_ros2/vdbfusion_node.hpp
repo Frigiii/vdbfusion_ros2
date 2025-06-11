@@ -37,6 +37,7 @@ class vdbfusion_node : public rclcpp::Node {
 
   void publishVolumeMesh();
   void publishVolumeValue();
+  void publishVolumeFlow();
 
   void publishTSDF(const std::string& ns = "vdbfusion") {
     publishTSDF(vdb_volume_, ns);
@@ -69,6 +70,8 @@ class vdbfusion_node : public rclcpp::Node {
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr
       volume_mesh_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr volume_val_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+      volume_flow_pub_;
 
   // tf2
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;

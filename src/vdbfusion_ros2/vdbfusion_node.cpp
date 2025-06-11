@@ -73,6 +73,8 @@ vdbfusion_node::vdbfusion_node(const rclcpp::NodeOptions& options)
       output_topic_ + "/mesh", 10);
   volume_val_pub_ = create_publisher<std_msgs::msg::Float32>(
       output_topic_ + "/volume_value", 10);
+  volume_flow_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
+      output_topic_ + "/volume_flow", 10);
 
   // publishing timers
   if (get_parameter("publish_tsdf").as_bool()) {
@@ -282,6 +284,7 @@ void vdbfusion_node::volumeTimerCB() {
   vdb_volume_->updateVolumeExtractor();
   this->publishVolumeValue();
   this->publishVolumeMesh();
+  this->publishVolumeFlow();
 }
 
 void vdbfusion_node::punishNotUpdatedVoxelsCB() {
@@ -302,6 +305,15 @@ void vdbfusion_node::publishVolumeMesh() {
       *vdb_volume_, header, fill_holes_, max_var_, iso_level_);
 
   mesh_pub_->publish(mesh_marker);
+}
+
+void vdbfusion_node::publishVolumeFlow() {
+  auto header = std_msgs::msg::Header{};
+  header.stamp = latest_pc_header_stamp_;
+  header.frame_id = static_frame_id_;
+  auto flow_marker = vdbVolumeToFlowMarker(*vdb_volume_, header, max_var_);
+
+  volume_flow_pub_->publish(flow_marker);
 }
 
 void vdbfusion_node::publishTSDF(std::shared_ptr<VDBVolumeType> vdb_volume,

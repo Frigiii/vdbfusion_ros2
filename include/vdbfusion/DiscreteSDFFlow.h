@@ -6,36 +6,8 @@
 #include <functional>
 #include <tuple>
 
-#include "pcl/pcl_macros.h"
-#include "pcl/point_types.h"
-#include "pcl/register_point_struct.h"
+#include "vdbfusion/SdfFlowPoint.hpp"
 #include "vdbfusion/VDBVolume.h"
-
-struct EIGEN_ALIGN16 SdfFlowPoint {
-  PCL_ADD_POINT4D;                 // preferred way of adding a XYZ+padding
-  float nx, ny, nz;                // Normal vector components
-  float dsdt;                      // Discrete SDF flow value (D(x,t)/dt)
-  float wx, wy, wz;                // Angular velocity components
-  float vx, vy, vz;                // Linear velocity components
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW  // ensure proper alignment
-};
-
-// Register the point structure with PCL
-POINT_CLOUD_REGISTER_POINT_STRUCT(
-    SdfFlowPoint,        // NOLINT(cppcoreguidelines-pro-type-union-access)
-    (float, x, x)        // NOLINT
-    (float, y, y)        // NOLINT
-    (float, z, z)        // NOLINT
-    (float, nx, nx)      // NOLINT
-    (float, ny, ny)      // NOLINT
-    (float, nz, nz)      // NOLINT
-    (float, dsdt, dsdt)  // NOLINT
-    (float, wx, wx)      // NOLINT
-    (float, wy, wy)      // NOLINT
-    (float, wz, wz)      // NOLINT
-    (float, vx, vx)      // NOLINT
-    (float, vy, vy)      // NOLINT
-    (float, vz, vz))     // NOLINT
 
 namespace vdbfusion {
 class DiscreteSDFFlow : public VDBVolume {
@@ -100,6 +72,16 @@ class DiscreteSDFFlow : public VDBVolume {
   }
 
  public:
+  SdfFlowPointCloudPtr latest_flow_field_ =
+      std::make_shared<SdfFlowPointCloud>();  ///< Latest flow field
+
+  /// @brief Returns the latest flow field
+  SdfFlowPointCloudPtr getLatestFlowField() const { return latest_flow_field_; }
+
+  /// @brief Sets the latest flow field
+  void setLatestFlowField(const SdfFlowPointCloudPtr& flow_field) {
+    latest_flow_field_ = flow_field;
+  }
 };
 
 }  // namespace vdbfusion

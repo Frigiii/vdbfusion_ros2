@@ -5,8 +5,10 @@
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 #include <vector>
 
+#include "vdbfusion/DiscreteSDFFlow.h"
 #include "vdbfusion/VDBVolume.h"
 #include "visualization_msgs/msg/marker.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
 
 namespace {
 // Directly convert sensor_msgs/msg/PointCloud2 to std::vector<Eigen::Vector3>
@@ -91,8 +93,7 @@ visualization_msgs::msg::Marker vdbVolumeToMeshMarker(
   marker.color.b = 0.0f;
   marker.color.a = 1.0f;
 
-  auto [vertices, triangles] =
-      volume.ExtractTriangleMesh(fill_holes, max_var);
+  auto [vertices, triangles] = volume.ExtractTriangleMesh(fill_holes, max_var);
   for (const auto& triangle : triangles) {
     for (int i = 0; i < 3; ++i) {
       geometry_msgs::msg::Point point;
@@ -125,8 +126,8 @@ visualization_msgs::msg::Marker vdbVolumeVolumetoMeshMarker(
   marker.color.a = 0.5f;
 
   auto volume_ptr = volume.getVolumeExtractorVolume();
-  auto [vertices, triangles] = volume.ExtractTriangleMesh(
-      fill_holes, max_var, volume_ptr, iso_level);
+  auto [vertices, triangles] =
+      volume.ExtractTriangleMesh(fill_holes, max_var, volume_ptr, iso_level);
   for (const auto& triangle : triangles) {
     for (int i = 0; i < 3; ++i) {
       geometry_msgs::msg::Point point;
@@ -138,6 +139,72 @@ visualization_msgs::msg::Marker vdbVolumeVolumetoMeshMarker(
   }
 
   return marker;
+}
+
+// Converts a VDBVolume to visualization_msgs::msg::Marker message
+visualization_msgs::msg::MarkerArray vdbVolumeToFlowMarker(
+    vdbfusion::DiscreteSDFFlow& volume, const std_msgs::msg::Header& header,
+    const float& max_var) {
+  auto marker_array = visualization_msgs::msg::MarkerArray{};
+
+  auto flow_field = volume.getLatestFlowField();
+
+  if (!flow_field) {
+    return marker_array;  // Return empty marker array if no flow field is
+                          // available
+  }
+
+  // Create a marker for the flow field
+  auto marker = visualization_msgs::msg::Marker{};
+  marker.header = header;
+  marker.ns = "vdbfusion_flow";
+
+  // Clear previous markers
+  marker.type = visualization_msgs::msg::Marker::DELETEALL;
+  marker_array.markers.push_back(marker);
+
+  // Reset marker for flow arrows
+  marker.id = 0;
+  marker.type = visualization_msgs::msg::Marker::ARROW;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  marker.color.a = 1.0f;  // Fully opaque
+  marker.color.r = 1.0f;  // Red color for flow arrows
+  marker.color.g = 0.0f;
+  marker.color.b = 0.0f;
+  marker.scale.z = 0.01;  // Arrow shaft diameter
+  marker.scale.y = 0.01;  // Arrow head diameter
+
+  for (auto& point : flow_field->points) {
+    // Arrow length, scaled down for visibility
+    marker.scale.x = std::sqrt(point.vx * point.vx + point.vy * point.vy +
+                               point.vz * point.vz) /
+                     20.0f;
+
+    // Convert the velocity vector to a quaternion for orientation
+    Eigen::Quaterniond orientation;
+    if (marker.scale.x > 0.0) {
+      Eigen::Vector3d direction(point.vx, point.vy, point.vz);
+      direction.normalize();
+      orientation = Eigen::Quaterniond::FromTwoVectors(Eigen::Vector3d::UnitX(),
+                                                       direction);
+      marker.scale.x = std::min(marker.scale.x, 0.2);  // Limit max length
+    } else {
+      continue;  // Skip if the length is zero
+    }
+
+    marker.pose.position.x = point.x;
+    marker.pose.position.y = point.y;
+    marker.pose.position.z = point.z;
+    marker.pose.orientation.x = orientation.x();
+    marker.pose.orientation.y = orientation.y();
+    marker.pose.orientation.z = orientation.z();
+    marker.pose.orientation.w = orientation.w();
+
+    // Add the marker to the marker array
+    marker.id++;  // Increment ID for each marker
+    marker_array.markers.push_back(marker);
+  }
+  return marker_array;
 }
 
 }  // namespace
