@@ -40,20 +40,20 @@ Eigen::Vector3d GetVoxelCenter(const openvdb::Coord& voxel,
 namespace vdbfusion {
 void DiscreteSDFFlow::Integrate(
     const std::vector<Eigen::Vector3d>& points, const Eigen::Vector3d& origin,
-    const std::function<float(float)>& weighting_function) {
+    const std::function<float(float)>& variance_function) {
   // The plan is to create a one-shot TSDF of the point cloud, then create the
   // interpolated difference of that to tsdf_ (interpolate the surfaces), which
   // will give us a flow field estimate, and finally apply the flow field
   // estimate to tsdf_ and integrate the point cloud into tsdf_.
 
-  // Create a one-shot TSDF from the points
-  auto os_tsdf = CreateOneShotTSDF(points, origin, weighting_function);
+  // // Create a one-shot TSDF from the points
+  // auto os_tsdf = CreateOneShotTSDF(points, origin, variance_function);
 
-  // Create a flow field from the one-shot TSDF
-  std::shared_ptr<openvdb::FloatGrid> flow_field = GetSparseFlowField(os_tsdf);
+  // // Create a flow field from the one-shot TSDF
+  // std::shared_ptr<openvdb::FloatGrid> flow_field = GetSparseFlowField(os_tsdf);
 
-  // Apply the flow field to the existing tsdf_
-  ApplyFlowField(flow_field);
+  // // Apply the flow field to the existing tsdf_
+  // ApplyFlowField(flow_field);
 
   // Integrate the point cloud into the existing tsdf_
   VDBVolume::Integrate(points, origin, [](float /* unused*/) { return 0.2; });
@@ -61,17 +61,17 @@ void DiscreteSDFFlow::Integrate(
 
 void DiscreteSDFFlow::Integrate(
     const std::vector<Eigen::Vector3d>& points, const Eigen::Vector3d& origin,
-    const std::function<float(float)>& weighting_function,
+    const std::function<float(float)>& variance_function,
     std::shared_ptr<openvdb::FloatGrid> tsdf,
-    std::shared_ptr<openvdb::FloatGrid> weights) {
+    std::shared_ptr<openvdb::FloatGrid> variance) {
   // Get some variables that are common to all rays
   const openvdb::math::Transform& xform = tsdf->transform();
   const openvdb::Vec3R eye(origin.x(), origin.y(), origin.z());
 
-  // Get the "unsafe" version of the grid acessors
+  // Get the grid acessors
   auto tsdf_acc = tsdf->getAccessor();
-  // auto weights_acc = weights->getAccessor();
-  auto weights_acc = weights ? weights->getAccessor() : tsdf_acc;
+  auto variance_acc = variance ? variance_->getAccessor() : tsdf_acc;
+  // auto updated_acc = updated_->getAccessor();
 
   // Launch an for_each execution, use std::execution::par to parallelize this
   // region
@@ -97,15 +97,16 @@ void DiscreteSDFFlow::Integrate(
       const auto voxel_center = GetVoxelCenter(voxel, xform);
       const auto sdf = ComputeSDF(origin, point, voxel_center);
       if (sdf > -sdf_trunc_) {
-        const float tsdf = std::min(sdf_trunc_, sdf);
-        const float weight = weighting_function(sdf);
-        const float last_weight = weights ? weights_acc.getValue(voxel) : 0.0f;
-        const float last_tsdf = tsdf_acc.getValue(voxel);
-        const float new_weight = weight + last_weight;
-        const float new_tsdf =
-            (last_tsdf * last_weight + tsdf * weight) / (new_weight);
+        const float obs_tsdf = std::min(sdf_trunc_, sdf);
+        const float obs_var = variance_function(sdf);
+        const float prior_var = variance_acc.getValue(voxel);
+        const float prior_tsdf = tsdf_acc.getValue(voxel);
+        const float new_var = (1 / (1 / prior_var + 1 / obs_var));
+        const float new_tsdf = (obs_var * prior_tsdf + prior_var * obs_tsdf) /
+                               (obs_var + prior_var);
         tsdf_acc.setValue(voxel, new_tsdf);
-        if (weights) weights_acc.setValue(voxel, new_weight);
+        variance_acc.setValue(voxel, std::max(min_var_, new_var));
+        // updated_acc.setValue(voxel, true);
       }
     } while (dda.step());
   });

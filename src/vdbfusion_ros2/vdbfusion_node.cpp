@@ -222,9 +222,9 @@ void vdbfusion_node::initializeVDBVolume() {
   auto punish_interval_ms = get_parameter("punish_interval_ms").as_int();
   var_punish = var_punish * static_cast<float>(punish_interval_ms) / 1000.0f;
   tsdf_punish = tsdf_punish * static_cast<float>(punish_interval_ms) / 1000.0f;
-  vdb_volume_ = std::make_shared<VDBVolume>(voxel_size, truncation_distance,
-                                            space_carving, min_var_,
-                                            var_punish, tsdf_punish);
+  vdb_volume_ = std::make_shared<VDBVolumeType>(voxel_size, truncation_distance,
+                                                space_carving, min_var_,
+                                                var_punish, tsdf_punish);
   vdb_volume_->initVolumeExtractor(boundary_mesh_path_, iso_level_);
 }
 
@@ -270,7 +270,7 @@ void vdbfusion_node::integratePointCloudCB(
     auto origin = Eigen::Vector3d{x, y, z};
 
     vdb_volume_->Integrate(scan, origin,
-                           [](float sdf) { return sdf < 0 ? 1.0 : 0.5; });
+                           [](float sdf) { return sdf < 0 ? 0.5 - sdf : 0.5; });
   }
 }
 
@@ -304,23 +304,23 @@ void vdbfusion_node::publishVolumeMesh() {
   mesh_pub_->publish(mesh_marker);
 }
 
-void vdbfusion_node::publishTSDF() {
+void vdbfusion_node::publishTSDF(std::shared_ptr<VDBVolumeType> vdb_volume,
+                                 const std::string& ns) {
   auto header = std_msgs::msg::Header{};
   header.stamp = latest_pc_header_stamp_;
   header.frame_id = static_frame_id_;
-  auto tsdf_marker = vdbVolumeToCubeMarker(*vdb_volume_, header, max_var_);
+  auto tsdf_marker = vdbVolumeToCubeMarker(*vdb_volume, header, max_var_);
 
   tsdf_pub_->publish(tsdf_marker);
 }
 
 void vdbfusion_node::publishMesh(std::shared_ptr<VDBVolumeType> vdb_volume,
-                                 std::string ns) {
-  if (!vdb_volume) vdb_volume = vdb_volume_;
+                                 const std::string& ns) {
   auto header = std_msgs::msg::Header{};
   header.stamp = latest_pc_header_stamp_;
   header.frame_id = static_frame_id_;
   auto mesh_marker =
-      vdbVolumeToMeshMarker(*vdb_volume_, header, fill_holes_, max_var_);
+      vdbVolumeToMeshMarker(*vdb_volume, header, fill_holes_, max_var_);
 
   mesh_pub_->publish(mesh_marker);
 }
