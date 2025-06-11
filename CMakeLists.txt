@@ -25,6 +25,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   TBB
   pcl_ros
   pcl_conversions
+  PCL
 )
 
 foreach(dep ${THIS_PACKAGE_INCLUDE_DEPENDS})
@@ -35,7 +36,6 @@ endforeach()
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/include
-  # ${PCL_INCLUDE_DIRS}
 )
 
 # build the vdbfusion library from source
@@ -53,6 +53,7 @@ target_include_directories(
   $<INSTALL_INTERFACE:include>
   ${OpenVDB_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
 )
 
 target_link_libraries(
