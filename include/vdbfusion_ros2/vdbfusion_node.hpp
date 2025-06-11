@@ -8,6 +8,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <std_msgs/msg/float32.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 
 #include "rclcpp_components/register_node_macro.hpp"
@@ -111,38 +112,14 @@ class vdbfusion_node : public rclcpp::Node {
       const sensor_msgs::msg::PointCloud2::SharedPtr pcd_in);
   void tsdfTimerCB();
   void meshTimerCB();
+  void volumeTimerCB();
+  void punishNotUpdatedVoxelsCB();
 
-  void publishTSDF(std::shared_ptr<VDBVolumeType> vdb_volume = nullptr,
-                   std::string ns = "tsdf");
-  void publishMesh(std::shared_ptr<VDBVolumeType> vdb_volume = nullptr,
-                   std::string ns = "mesh");
-  void inline publishMesh(std::shared_ptr<openvdb::FloatGrid> grid,
-                          std::string ns = "mesh") {
-    // check the grid
-    if (!grid) {
-      RCLCPP_ERROR(get_logger(), "Grid is null, cannot publish mesh.");
-      return;
-    }
+  void publishVolumeMesh();
+  void publishVolumeValue();
 
-    float voxel_size, truncation_distance;
-    bool space_carving;
-    if (vdb_volume_) {
-      voxel_size = vdb_volume_->voxel_size_;
-      truncation_distance = vdb_volume_->sdf_trunc_;
-      space_carving = vdb_volume_->space_carving_;
-    } else {
-      voxel_size = 0.05f;          // Default voxel size
-      truncation_distance = 0.1f;  // Default truncation distance
-      space_carving = false;       // Default space carving
-    }
-    auto vdb_volume = std::make_shared<VDBVolumeType>(
-        voxel_size, truncation_distance, space_carving);
-
-    vdb_volume->tsdf_ = grid;
-    vdb_volume->max_weight_ = max_weight_;
-    vdb_volume->weights_ = openvdb::FloatGrid::create(1.0f);
-    publishMesh(vdb_volume, ns);
-  }
+  void publishTSDF();
+  void publishMesh();
 
  private:
   std::shared_ptr<VDBVolumeType> vdb_volume_;
@@ -155,10 +132,15 @@ class vdbfusion_node : public rclcpp::Node {
   // timers
   rclcpp::TimerBase::SharedPtr tsdf_pub_timer_;
   rclcpp::TimerBase::SharedPtr mesh_pub_timer_;
+  rclcpp::TimerBase::SharedPtr volume_pub_timer_;
+  rclcpp::TimerBase::SharedPtr punish_not_updated_voxels_timer_;
 
   // publishers
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tsdf_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr mesh_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr
+      volume_mesh_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr volume_val_pub_;
 
   // tf2
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -173,11 +155,14 @@ class vdbfusion_node : public rclcpp::Node {
   float max_range_;
 
   bool fill_holes_;
-  float min_weight_;
-  float max_weight_;
+  float max_var_;
+  float min_var_;
+
+  float iso_level_;
 
   std::vector<std::string> pointcloud_inputs_;
   std::string output_topic_;
+  std::string boundary_mesh_path_;
   bool use_sim_time_;
   builtin_interfaces::msg::Time latest_pc_header_stamp_;
 };

@@ -16,7 +16,7 @@ vdbfusion_node:
     max_range: 3.0
 
     fill_holes: false
-    min_weight: 0.0
+    max_var: 0.0
 
     timestamp_tolerance_ns: 10000
     static_frame_id: SHOVEL

@@ -30,59 +30,87 @@
 #include <functional>
 #include <tuple>
 
+#include "vdbfusion/VolumeExtractor.h"
+
 namespace vdbfusion {
 
 class VDBVolume {
  public:
-  VDBVolume(float voxel_size, float sdf_trunc, bool space_carving = false);
+  VDBVolume(float voxel_size, float sdf_trunc, bool space_carving = false,
+            float min_var = 100.0f, float var_punish = 0.0f,
+            float tsdf_punish = 0.0f);
   ~VDBVolume() = default;
 
  public:
   /// @brief Integrates a new (globally aligned) PointCloud into the current
   /// tsdf_ volume.
-  virtual void Integrate(const std::vector<Eigen::Vector3d>& points,
-                         const Eigen::Vector3d& origin,
-                         const std::function<float(float)>& weighting_function);
+  void Integrate(const std::vector<Eigen::Vector3d>& points,
+                 const Eigen::Vector3d& origin,
+                 const std::function<float(float)>& variance_function);
 
   /// @brief Integrates a new (globally aligned) PointCloud into the current
   /// tsdf_ volume.
   void inline Integrate(const std::vector<Eigen::Vector3d>& points,
                         const Eigen::Matrix4d& extrinsics,
-                        const std::function<float(float)>& weighting_function) {
+                        const std::function<float(float)>& variance_function) {
     const Eigen::Vector3d& origin = extrinsics.block<3, 1>(0, 3);
-    Integrate(points, origin, weighting_function);
+    Integrate(points, origin, variance_function);
   }
 
   /// @brief Integrate incoming TSDF grid inside the current volume using the
   /// TSDF equations
-  void Integrate(std::shared_ptr<openvdb::FloatGrid> grid,
-                 const std::function<float(float)>& weighting_function);
+  void Integrate(openvdb::FloatGrid::Ptr grid,
+                 const std::function<float(float)>& variance_function);
 
   /// @brief Fuse a new given sdf value at the given voxel location, thread-safe
   void UpdateTSDF(const float& sdf, const openvdb::Coord& voxel,
-                  const std::function<float(float)>& weighting_function);
+                  const std::function<float(float)>& variance_function);
 
   /// @brief Prune TSDF grids, ideal utility to cleanup a D(x) volume before
   /// exporting it
-  std::shared_ptr<openvdb::FloatGrid> Prune(float min_weight) const;
+  openvdb::FloatGrid::Ptr Prune(float max_var) const;
 
   /// @brief Extracts a TriangleMesh as the iso-surface in the actual volume
   [[nodiscard]] std::tuple<std::vector<Eigen::Vector3d>,
                            std::vector<Eigen::Vector3i>>
-  ExtractTriangleMesh(bool fill_holes = true, float min_weight = 0.5) const;
+  ExtractTriangleMesh(bool fill_holes = true, float max_var = 0.5,
+                      openvdb::FloatGrid::Ptr tsdf = nullptr,
+                      float iso_level = 0.0f) const;
+
+  void PunishNotUpdatedVoxels();
+
+  void initVolumeExtractor(std::string boundary_mesh_path,
+                           float iso_level = 0.0f) {
+    volume_extractor_ = VolumeExtractor(tsdf_, iso_level);
+    volume_extractor_.loadBoundaryMesh(boundary_mesh_path);
+  }
+
+  void updateVolumeExtractor() { volume_extractor_.updateVolume(); }
+
+  openvdb::FloatGrid::Ptr getVolumeExtractorVolume() const {
+    return volume_extractor_.getExtractVolume();
+  }
+
+  float getVolumeValue() const { return volume_extractor_.getVolumeValue(); }
 
  public:
-  /// OpenVDB Grids modeling the signed distance field and the weight grid
-  std::shared_ptr<openvdb::FloatGrid> tsdf_;
-  std::shared_ptr<openvdb::FloatGrid> weights_;
+  /// OpenVDB Grids modeling the signed distance field and the var grid
+  openvdb::FloatGrid::Ptr tsdf_;
+  openvdb::FloatGrid::Ptr variance_;
+  openvdb::BoolGrid::Ptr updated_;
+
+  VolumeExtractor volume_extractor_;
 
   /// VDBVolume public properties
   float voxel_size_;
   float sdf_trunc_;
   bool space_carving_;
+  float max_var_;
+  float iso_level_;
+  float min_var_ = 0.0f;  // default value for variance
 
-  float max_weight_ =
-      1.0f;  // Maximum allowable weight for the weighting function
+  float var_punish_;
+  float tsdf_punish_;
 };
 
 }  // namespace vdbfusion

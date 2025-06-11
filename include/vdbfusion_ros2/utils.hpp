@@ -43,7 +43,7 @@ void preprocessScan(std::vector<Eigen::Vector3d>& scan, float min_range,
 // converts a VDBVolume to a visualization_msgs::msg::Marker message
 visualization_msgs::msg::Marker vdbVolumeToCubeMarker(
     vdbfusion::VDBVolume& volume, const std_msgs::msg::Header& header,
-    const float& min_weight) {
+    const float& max_var) {
   auto marker = visualization_msgs::msg::Marker{};
   marker.header = header;
   marker.id = 0;
@@ -57,10 +57,10 @@ visualization_msgs::msg::Marker vdbVolumeToCubeMarker(
   marker.color.b = 0.0f;
   marker.color.a = 1.0f;
 
-  auto weights_acc = volume.weights_->getConstAccessor();
+  auto variance_acc = volume.variance_->getConstAccessor();
   for (auto it = volume.tsdf_->beginValueOn(); it; ++it) {
     const openvdb::Coord& coord = it.getCoord();
-    if (it.getValue() > 0.0f || weights_acc.getValue(coord) < min_weight) {
+    if (it.getValue() > 0.0f || variance_acc.getValue(coord) > max_var) {
       continue;
     }
     geometry_msgs::msg::Point point;
@@ -76,7 +76,7 @@ visualization_msgs::msg::Marker vdbVolumeToCubeMarker(
 // converts a VDBVolume to a visualization_msgs::msg::Marker message
 visualization_msgs::msg::Marker vdbVolumeToMeshMarker(
     vdbfusion::VDBVolume& volume, const std_msgs::msg::Header& header,
-    const bool& fill_holes, const float& min_weight) {
+    const bool& fill_holes, const float& max_var) {
   auto marker = visualization_msgs::msg::Marker{};
   marker.header = header;
   marker.id = 0;
@@ -92,7 +92,7 @@ visualization_msgs::msg::Marker vdbVolumeToMeshMarker(
   marker.color.a = 1.0f;
 
   auto [vertices, triangles] =
-      volume.ExtractTriangleMesh(fill_holes, min_weight);
+      volume.ExtractTriangleMesh(fill_holes, max_var);
   for (const auto& triangle : triangles) {
     for (int i = 0; i < 3; ++i) {
       geometry_msgs::msg::Point point;
@@ -105,4 +105,39 @@ visualization_msgs::msg::Marker vdbVolumeToMeshMarker(
 
   return marker;
 }
+
+// Converts a VDBVolume to visualization_msgs::msg::Marker message
+visualization_msgs::msg::Marker vdbVolumeVolumetoMeshMarker(
+    vdbfusion::VDBVolume& volume, const std_msgs::msg::Header& header,
+    const bool& fill_holes, const float& max_var, const float& iso_level) {
+  auto marker = visualization_msgs::msg::Marker{};
+  marker.header = header;
+  marker.id = 0;
+  marker.ns = "vdbfusion_volume_mesh";
+  marker.type = visualization_msgs::msg::Marker::TRIANGLE_LIST;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  marker.pose.orientation.w = 1.0;
+  marker.scale.x = marker.scale.y = marker.scale.z = 1.0;
+  // default color is green
+  marker.color.r = 0.0f;
+  marker.color.g = 1.0f;
+  marker.color.b = 0.0f;
+  marker.color.a = 0.5f;
+
+  auto volume_ptr = volume.getVolumeExtractorVolume();
+  auto [vertices, triangles] = volume.ExtractTriangleMesh(
+      fill_holes, max_var, volume_ptr, iso_level);
+  for (const auto& triangle : triangles) {
+    for (int i = 0; i < 3; ++i) {
+      geometry_msgs::msg::Point point;
+      point.x = vertices[triangle[i]].x();
+      point.y = vertices[triangle[i]].y();
+      point.z = vertices[triangle[i]].z();
+      marker.points.push_back(point);
+    }
+  }
+
+  return marker;
+}
+
 }  // namespace
