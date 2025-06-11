@@ -6,7 +6,36 @@
 #include <functional>
 #include <tuple>
 
+#include "pcl/pcl_macros.h"
+#include "pcl/point_types.h"
+#include "pcl/register_point_struct.h"
 #include "vdbfusion/VDBVolume.h"
+
+struct EIGEN_ALIGN16 SdfFlowPoint {
+  PCL_ADD_POINT4D;                 // preferred way of adding a XYZ+padding
+  float nx, ny, nz;                // Normal vector components
+  float dsdt;                      // Discrete SDF flow value (D(x,t)/dt)
+  float wx, wy, wz;                // Angular velocity components
+  float vx, vy, vz;                // Linear velocity components
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW  // ensure proper alignment
+};
+
+// Register the point structure with PCL
+POINT_CLOUD_REGISTER_POINT_STRUCT(
+    SdfFlowPoint,        // NOLINT(cppcoreguidelines-pro-type-union-access)
+    (float, x, x)        // NOLINT
+    (float, y, y)        // NOLINT
+    (float, z, z)        // NOLINT
+    (float, nx, nx)      // NOLINT
+    (float, ny, ny)      // NOLINT
+    (float, nz, nz)      // NOLINT
+    (float, dsdt, dsdt)  // NOLINT
+    (float, wx, wx)      // NOLINT
+    (float, wy, wy)      // NOLINT
+    (float, wz, wz)      // NOLINT
+    (float, vx, vx)      // NOLINT
+    (float, vy, vy)      // NOLINT
+    (float, vz, vz))     // NOLINT
 
 namespace vdbfusion {
 class DiscreteSDFFlow : public VDBVolume {
@@ -26,12 +55,15 @@ class DiscreteSDFFlow : public VDBVolume {
                  const std::function<float(float)>& variance_function);
 
   /// @brief Integrates a new (globally aligned) PointCloud
-  /// into a given tsdf and optionally into a given vars grid.
+  /// into a given tsdf and optionally into a given vars grid as well as the
+  /// integration distance. With given integration distance, the space carving
+  /// is disabled.
   void Integrate(const std::vector<Eigen::Vector3d>& points,
                  const Eigen::Vector3d& origin,
                  const std::function<float(float)>& variance_function,
                  std::shared_ptr<openvdb::FloatGrid> tsdf,
-                 std::shared_ptr<openvdb::FloatGrid> vars = nullptr);
+                 std::shared_ptr<openvdb::FloatGrid> vars = nullptr,
+                 float integration_distance = -1.0f);
 
   /// @brief Creates a one-shot TSDF from the given points and origin.
   std::shared_ptr<openvdb::FloatGrid> inline CreateOneShotTSDF(
@@ -43,7 +75,8 @@ class DiscreteSDFFlow : public VDBVolume {
     os_tsdf->setTransform(
         openvdb::math::Transform::createLinearTransform(voxel_size_));
     os_tsdf->setGridClass(openvdb::GRID_LEVEL_SET);
-    Integrate(points, origin, variance_function, os_tsdf);
+    Integrate(points, origin, variance_function, os_tsdf, nullptr,
+              voxel_size_ / 2.0f);
     return os_tsdf;
   }
 

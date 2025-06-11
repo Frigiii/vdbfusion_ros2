@@ -23,13 +23,20 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   OpenVDB
   Eigen3
   TBB
+  pcl_ros
+  pcl_conversions
 )
 
 foreach(dep ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${dep} REQUIRED)
 endforeach()
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+# find_package(PCL REQUIRED)
+
+include_directories(
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  # ${PCL_INCLUDE_DIRS}
+)
 
 # build the vdbfusion library from source
 add_library(
@@ -54,7 +61,7 @@ target_link_libraries(
   ${OpenVDB_LIBRARIES}
 )
 
-install (
+install(
   TARGETS vdbfusion_library
   EXPORT export_vdbfusion_library
   LIBRARY DESTINATION lib
@@ -124,12 +131,12 @@ install(
 )
 
 install(
-    FILES plugin.xml
-    DESTINATION share/${PROJECT_NAME}
+  FILES plugin.xml
+  DESTINATION share/${PROJECT_NAME}
 )
 
 install(DIRECTORY launch config
-        DESTINATION share/${PROJECT_NAME})
+  DESTINATION share/${PROJECT_NAME})
 
 
 if(BUILD_TESTING)
