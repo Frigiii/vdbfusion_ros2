@@ -160,7 +160,7 @@ visualization_msgs::msg::MarkerArray vdbVolumeToFlowMarker(
   marker.ns = "vdbfusion_flow";
 
   // Clear previous markers
-  marker.type = visualization_msgs::msg::Marker::DELETEALL;
+  marker.action = visualization_msgs::msg::Marker::DELETEALL;
   marker_array.markers.push_back(marker);
 
   // Reset marker for flow arrows

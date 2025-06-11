@@ -46,9 +46,6 @@ void DiscreteSDFFlow::Integrate(
   // the flow field estimate to tsdf_ and integrate the point cloud into
   // tsdf_.
 
-  // Integrate the point cloud into the existing tsdf_
-  VDBVolume::Integrate(points, origin, variance_function);
-
   if (points.empty()) {
     std::cerr << "No points provided for scene flow estimation." << std::endl;
     return;  // Skip if no points are provided
@@ -123,7 +120,7 @@ void DiscreteSDFFlow::Integrate(
 
     if (flow_field->points.empty()) {
       std::cerr << "No valid points in the flow field." << std::endl;
-      return;
+      continue;
     }
 
     // create a kd-tree for the flow field
@@ -207,6 +204,9 @@ void DiscreteSDFFlow::Integrate(
     this->setLatestFlowField(flow_field);
 
   } while (false);
+
+  // Integrate the point cloud into the existing tsdf_
+  VDBVolume::Integrate(points, origin, variance_function);
 }
 
 void DiscreteSDFFlow::Integrate(
