@@ -38,49 +38,33 @@ class DiscreteSDFFlow : public VDBVolume {
                  float integration_distance = -1.0f);
 
   /// @brief Creates a one-shot TSDF from the given points and origin.
-  std::shared_ptr<openvdb::FloatGrid> inline CreateOneShotTSDF(
+  std::shared_ptr<openvdb::FloatGrid> CreateOneShotTSDF(
       const std::vector<Eigen::Vector3d>& points, const Eigen::Vector3d& origin,
-      const std::function<float(float)>& variance_function) {
-    std::shared_ptr<openvdb::FloatGrid> os_tsdf =
-        openvdb::FloatGrid::create(sdf_trunc_);
-    os_tsdf->setName("One-shot TSDF");
-    os_tsdf->setTransform(
-        openvdb::math::Transform::createLinearTransform(voxel_size_));
-    os_tsdf->setGridClass(openvdb::GRID_LEVEL_SET);
-    Integrate(points, origin, variance_function, os_tsdf, nullptr,
-              voxel_size_ / 2.0f);
-    return os_tsdf;
-  }
+      const std::function<float(float)>& variance_function);
 
-  std::shared_ptr<openvdb::FloatGrid> GetSparseFlowField(
-      std::shared_ptr<openvdb::FloatGrid> os_tsdf);
+  std::shared_ptr<openvdb::FloatGrid> GetSparseSdfFlow(
+      std::shared_ptr<openvdb::FloatGrid> os_tsdf, const float dt);
 
-  void ApplyFlowField(std::shared_ptr<openvdb::FloatGrid> flow_field) {
-    // Apply the flow field to the current tsdf_ grid
-    using AccessorRW = openvdb::tree::ValueAccessorRW<openvdb::FloatTree>;
-    AccessorRW tsdf_acc = AccessorRW(tsdf_->tree());
-    AccessorRW flow_acc = AccessorRW(flow_field->tree());
-    for (auto iter = flow_field->cbeginValueOn(); iter; ++iter) {
-      const openvdb::Coord& voxel = iter.getCoord();
-      if (tsdf_acc.isValueOn(voxel)) {
-        // Update the tsdf_ value by adding the flow field value
-        const float tsdf_value = tsdf_acc.getValue(voxel);
-        const float flow_value = flow_acc.getValue(voxel);
-        tsdf_acc.setValue(voxel, tsdf_value + flow_value);
-      }
-    }
-  }
+  void ApplySparseSceneFlow(
+      std::shared_ptr<openvdb::FloatGrid> sparse_scene_flow);
+
+  SdfFlowPointCloudPtr EstimateSparseSceneFlow(
+      std::shared_ptr<openvdb::FloatGrid> dsdt,
+      std::shared_ptr<openvdb::Vec3fGrid> grad_s, float downsample_radius,
+      int min_num_nn);
 
  public:
-  SdfFlowPointCloudPtr latest_flow_field_ =
+  SdfFlowPointCloudPtr latest_sparse_scene_flow_ =
       std::make_shared<SdfFlowPointCloud>();  ///< Latest flow field
 
   /// @brief Returns the latest flow field
-  SdfFlowPointCloudPtr getLatestFlowField() const { return latest_flow_field_; }
+  SdfFlowPointCloudPtr getLatestSparseSceneFlow() const {
+    return latest_sparse_scene_flow_;
+  }
 
   /// @brief Sets the latest flow field
-  void setLatestFlowField(const SdfFlowPointCloudPtr& flow_field) {
-    latest_flow_field_ = flow_field;
+  void setLatestSparseSceneFlow(const SdfFlowPointCloudPtr& sparse_scene_flow) {
+    latest_sparse_scene_flow_ = sparse_scene_flow;
   }
 };
 

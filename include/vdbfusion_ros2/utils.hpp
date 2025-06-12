@@ -147,7 +147,7 @@ visualization_msgs::msg::MarkerArray vdbVolumeToFlowMarker(
     const float& max_var) {
   auto marker_array = visualization_msgs::msg::MarkerArray{};
 
-  auto flow_field = volume.getLatestFlowField();
+  auto flow_field = volume.getLatestSparseSceneFlow();
 
   if (!flow_field) {
     return marker_array;  // Return empty marker array if no flow field is

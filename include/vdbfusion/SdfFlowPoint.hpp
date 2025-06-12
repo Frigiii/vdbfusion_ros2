@@ -19,6 +19,7 @@
 #include "pcl/pcl_macros.h"
 #include "pcl/point_cloud.h"
 #include "pcl/point_types.h"
+#include "pcl/common/common.h"
 
 namespace pcl {
 
@@ -122,3 +123,4 @@ POINT_CLOUD_REGISTER_POINT_WRAPPER(
 template class pcl::PointCloud<pcl::SdfFlowPoint>;
 template class pcl::PCLBase<pcl::SdfFlowPoint>;
 template class pcl::KdTreeFLANN<pcl::SdfFlowPoint>;
+// template class pcl::getMinMax3D<pcl::SdfFlowPoint>;
