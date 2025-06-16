@@ -27,7 +27,11 @@ class VolumeExtractor {
  public:
   VolumeExtractor() = default;
   VolumeExtractor(const GridPtr tsdf, float iso_level = 0.0f)
-      : tsdf_(tsdf), iso_level_(iso_level) {}
+      : tsdf_(tsdf),
+        iso_level_(iso_level),
+        volume_value_(0.0),
+        volume_value_lower_(0.0),
+        volume_value_upper_(0.0) {}
   ~VolumeExtractor() = default;
 
   /// @brief Extracts a TriangleMesh as the iso-surface in the actual volume
@@ -42,28 +46,54 @@ class VolumeExtractor {
 
   /// @brief Extracts the volume value from the volume at the iso_level
   float getVolumeValue() const {
-    VDBFUSION_VOLUMEEXTRACTOR_ASSERT(extract_volume_ && tsdf_ && boundary_);
+    VDBFUSION_VOLUMEEXTRACTOR_ASSERT(extract_volume_lower_ && tsdf_ &&
+                                     boundary_lower_);
     return volume_value_;
   }
+  float getVolumeValueLower() const {
+    VDBFUSION_VOLUMEEXTRACTOR_ASSERT(extract_volume_lower_ && tsdf_ &&
+                                     boundary_lower_);
+    return volume_value_lower_;
+  }
+  float getVolumeValueUpper() const {
+    VDBFUSION_VOLUMEEXTRACTOR_ASSERT(extract_volume_upper_ && tsdf_ &&
+                                     boundary_upper_);
+    return volume_value_upper_;
+  }
 
-  GridPtr getExtractVolume() const {
-    VDBFUSION_VOLUMEEXTRACTOR_ASSERT(extract_volume_);
-    // return boundary_;
-    return extract_volume_;
+  GridPtr getExtractorVolumeLower() const {
+    VDBFUSION_VOLUMEEXTRACTOR_ASSERT(extract_volume_lower_);
+    return extract_volume_lower_;
+  }
+
+  GridPtr getExtractorVolumeUpper() const {
+    VDBFUSION_VOLUMEEXTRACTOR_ASSERT(extract_volume_upper_);
+    return extract_volume_upper_;
   }
 
   /// @brief Loads a boundary mesh from a file and converts it to sdf into
   /// boundary_
-  void loadBoundaryMesh(const std::string& boundary_mesh);
+  void loadBoundaryMesh(const std::string& boundary_mesh, GridPtr& boundary,
+                        std::string name = "boundary");
+
+  void loadBoundaryMesh(const std::string& lower_boundary_mesh,
+                        const std::string& upper_boundary_mesh) {
+    loadBoundaryMesh(lower_boundary_mesh, boundary_lower_, "lower_boundary");
+    loadBoundaryMesh(upper_boundary_mesh, boundary_upper_, "upper_boundary");
+  }
 
  private:
   //   const VDBVolume& volume_;
   float volume_value_;
+  float volume_value_lower_;
+  float volume_value_upper_;
   float iso_level_;
 
   GridPtr tsdf_;
-  GridPtr extract_volume_;
-  GridPtr boundary_;
+  GridPtr extract_volume_lower_;
+  GridPtr extract_volume_upper_;
+  GridPtr boundary_lower_;
+  GridPtr boundary_upper_;
 };
 
 }  // namespace vdbfusion

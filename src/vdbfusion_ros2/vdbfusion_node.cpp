@@ -72,7 +72,11 @@ vdbfusion_node::vdbfusion_node(const rclcpp::NodeOptions& options)
   mesh_pub_ = create_publisher<visualization_msgs::msg::Marker>(
       output_topic_ + "/mesh", 10);
   volume_val_pub_ = create_publisher<std_msgs::msg::Float32>(
-      output_topic_ + "/volume_value", 10);
+      output_topic_ + "/volume_value/fused", 10);
+  volume_val_lower_pub_ = create_publisher<std_msgs::msg::Float32>(
+      output_topic_ + "/volume_value/lower", 10);
+  volume_val_upper_pub_ = create_publisher<std_msgs::msg::Float32>(
+      output_topic_ + "/volume_value/upper", 10);
 
   // publishing timers
   if (get_parameter("publish_tsdf").as_bool()) {
@@ -136,7 +140,8 @@ void vdbfusion_node::initializeParameters() {
   declare_parameter("var_punish", 0.0f);
   declare_parameter("tsdf_punish", 0.0f);
 
-  declare_parameter("boundary_mesh_path", "");
+  declare_parameter("lower_boundary_mesh_path", "");
+  declare_parameter("upper_boundary_mesh_path", "");
 }
 
 void vdbfusion_node::retrieveParameters() {
@@ -160,7 +165,8 @@ void vdbfusion_node::retrieveParameters() {
 
   get_parameter("use_sim_time", this->use_sim_time_);
 
-  get_parameter("boundary_mesh_path", boundary_mesh_path_);
+  get_parameter("lower_boundary_mesh_path", lower_boundary_mesh_path_);
+  get_parameter("upper_boundary_mesh_path", upper_boundary_mesh_path_);
 
   RCLCPP_INFO(get_logger(), "Parameters retrieved successfully:");
   RCLCPP_INFO(get_logger(), "   pointcloud_inputs:");
@@ -207,8 +213,10 @@ void vdbfusion_node::retrieveParameters() {
               get_parameter("var_punish").as_double());
   RCLCPP_INFO(get_logger(), "   tsdf_punish: %f",
               get_parameter("tsdf_punish").as_double());
-  RCLCPP_INFO(get_logger(), "   boundary_mesh_path: %s",
-              boundary_mesh_path_.c_str());
+  RCLCPP_INFO(get_logger(), "   lower_boundary_mesh_path: %s",
+              lower_boundary_mesh_path_.c_str());
+  RCLCPP_INFO(get_logger(), "   upper_boundary_mesh_path: %s",
+              upper_boundary_mesh_path_.c_str());
 }
 
 void vdbfusion_node::initializeVDBVolume() {
@@ -223,9 +231,10 @@ void vdbfusion_node::initializeVDBVolume() {
   var_punish = var_punish * static_cast<float>(punish_interval_ms) / 1000.0f;
   tsdf_punish = tsdf_punish * static_cast<float>(punish_interval_ms) / 1000.0f;
   vdb_volume_ = std::make_shared<VDBVolume>(voxel_size, truncation_distance,
-                                            space_carving, min_var_,
-                                            var_punish, tsdf_punish);
-  vdb_volume_->initVolumeExtractor(boundary_mesh_path_, iso_level_);
+                                            space_carving, min_var_, var_punish,
+                                            tsdf_punish);
+  vdb_volume_->initVolumeExtractor(lower_boundary_mesh_path_,
+                                   upper_boundary_mesh_path_, iso_level_);
 }
 
 void vdbfusion_node::integratePointCloudCB(
@@ -292,15 +301,23 @@ void vdbfusion_node::publishVolumeValue() {
   std_msgs::msg::Float32 volume_value;
   volume_value.data = vdb_volume_->getVolumeValue();
   volume_val_pub_->publish(volume_value);
+  volume_value.data = vdb_volume_->getVolumeValueLower();
+  volume_val_lower_pub_->publish(volume_value);
+  volume_value.data = vdb_volume_->getVolumeValueUpper();
+  volume_val_upper_pub_->publish(volume_value);
 }
 
 void vdbfusion_node::publishVolumeMesh() {
   auto header = std_msgs::msg::Header{};
   header.stamp = latest_pc_header_stamp_;
   header.frame_id = static_frame_id_;
-  auto mesh_marker = vdbVolumeVolumetoMeshMarker(
+  auto mesh_marker = vdbLowerVolumetoMeshMarker(
       *vdb_volume_, header, fill_holes_, max_var_, iso_level_);
-
+  mesh_marker.ns = "lower_boundary_mesh";
+  mesh_pub_->publish(mesh_marker);
+  mesh_marker = vdbUpperVolumetoMeshMarker(
+      *vdb_volume_, header, fill_holes_, max_var_, iso_level_);
+  mesh_marker.ns = "upper_boundary_mesh";
   mesh_pub_->publish(mesh_marker);
 }
 

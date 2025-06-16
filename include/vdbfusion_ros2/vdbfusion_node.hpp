@@ -57,6 +57,8 @@ class vdbfusion_node : public rclcpp::Node {
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr
       volume_mesh_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr volume_val_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr volume_val_lower_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr volume_val_upper_pub_;
 
   // tf2
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -78,7 +80,8 @@ class vdbfusion_node : public rclcpp::Node {
 
   std::vector<std::string> pointcloud_inputs_;
   std::string output_topic_;
-  std::string boundary_mesh_path_;
+  std::string lower_boundary_mesh_path_;
+  std::string upper_boundary_mesh_path_;
   bool use_sim_time_;
   builtin_interfaces::msg::Time latest_pc_header_stamp_;
 };

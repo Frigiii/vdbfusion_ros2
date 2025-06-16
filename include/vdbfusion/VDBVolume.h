@@ -79,19 +79,30 @@ class VDBVolume {
 
   void PunishNotUpdatedVoxels();
 
-  void initVolumeExtractor(std::string boundary_mesh_path,
+  void initVolumeExtractor(std::string lower_boundary_mesh_path,
+                           std::string upper_boundary_mesh_path,
                            float iso_level = 0.0f) {
     volume_extractor_ = VolumeExtractor(tsdf_, iso_level);
-    volume_extractor_.loadBoundaryMesh(boundary_mesh_path);
+    volume_extractor_.loadBoundaryMesh(lower_boundary_mesh_path,
+                                       upper_boundary_mesh_path);
   }
 
   void updateVolumeExtractor() { volume_extractor_.updateVolume(); }
 
-  openvdb::FloatGrid::Ptr getVolumeExtractorVolume() const {
-    return volume_extractor_.getExtractVolume();
+  openvdb::FloatGrid::Ptr getVolumeExtractorVolumeLower() const {
+    return volume_extractor_.getExtractorVolumeLower();
+  }
+  openvdb::FloatGrid::Ptr getVolumeExtractorVolumeUpper() const {
+    return volume_extractor_.getExtractorVolumeUpper();
   }
 
   float getVolumeValue() const { return volume_extractor_.getVolumeValue(); }
+  float getVolumeValueLower() const {
+    return volume_extractor_.getVolumeValueLower();
+  }
+  float getVolumeValueUpper() const {
+    return volume_extractor_.getVolumeValueUpper();
+  }
 
  public:
   /// OpenVDB Grids modeling the signed distance field and the var grid
