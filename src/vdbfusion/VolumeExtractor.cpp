@@ -22,6 +22,7 @@
 
 #include <openvdb/openvdb.h>
 #include <openvdb/tools/MeshToVolume.h>
+#define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
 #include <Eigen/Core>

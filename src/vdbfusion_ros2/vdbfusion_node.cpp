@@ -278,8 +278,9 @@ void vdbfusion_node::integratePointCloudCB(
     const auto& z = transform.transform.translation.z;
     auto origin = Eigen::Vector3d{x, y, z};
 
-    vdb_volume_->Integrate(scan, origin,
-                           [](float sdf) { return sdf < 0 ? 1.0 : 0.5; });
+    vdb_volume_->Integrate(
+        scan, origin,
+        [](float sdf) { return sdf < 0 ? 0.2 + sdf * sdf * 16 : 0.2; });
   }
 }
 
@@ -315,8 +316,8 @@ void vdbfusion_node::publishVolumeMesh() {
       *vdb_volume_, header, fill_holes_, max_var_, iso_level_);
   mesh_marker.ns = "lower_boundary_mesh";
   mesh_pub_->publish(mesh_marker);
-  mesh_marker = vdbUpperVolumetoMeshMarker(
-      *vdb_volume_, header, fill_holes_, max_var_, iso_level_);
+  mesh_marker = vdbUpperVolumetoMeshMarker(*vdb_volume_, header, fill_holes_,
+                                           max_var_, iso_level_);
   mesh_marker.ns = "upper_boundary_mesh";
   mesh_pub_->publish(mesh_marker);
 }

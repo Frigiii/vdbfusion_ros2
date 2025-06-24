@@ -10,7 +10,6 @@ find_package(ament_cmake REQUIRED)
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   openvdb_vendor
-  tinyobjloader
   rclcpp
   rclcpp_components
   std_msgs
@@ -49,7 +48,6 @@ target_include_directories(
 
 target_link_libraries(
   vdbfusion_library
-  tinyobjloader
   ${OpenVDB_LIBRARIES}
 )
 
