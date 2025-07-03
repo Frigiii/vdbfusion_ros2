@@ -96,7 +96,7 @@ void VDBVolume::UpdateTSDF(
     AccessorRW tsdf_acc = AccessorRW(tsdf_->tree());
     AccessorRW variance_acc = AccessorRW(variance_->tree());
 
-    const float obs_tsdf = std::min(sdf_trunc_, sdf);
+    const float obs_tsdf = sdf;
     const float obs_var = variance_function(sdf);
     const float prior_var = variance_acc.getValue(voxel);
     const float prior_tsdf = tsdf_acc.getValue(voxel);
@@ -159,7 +159,7 @@ void VDBVolume::Integrate(
       const auto voxel_center = GetVoxelCenter(voxel, xform);
       const auto sdf = ComputeSDF(origin, point, voxel_center);
       if (sdf > -sdf_trunc_) {
-        const float obs_tsdf = std::min(sdf_trunc_, sdf);
+        const float obs_tsdf = sdf;
         const float obs_var = variance_function(sdf);
         const float prior_var = variance_acc.getValue(voxel);
         const float prior_tsdf = tsdf_acc.getValue(voxel);
@@ -215,17 +215,14 @@ void VDBVolume::PunishNotUpdatedVoxels() {
     if (!updated_acc.isValueOn(voxel)) {
       // Punish the TSDF values of the not updated voxel
       float new_tsdf_value = iter.getValue() + tsdf_punish;
-      if (new_tsdf_value > background) {
-        tsdf_acc.setValueOff(voxel);
-      } else {
-        tsdf_acc.setValue(voxel, new_tsdf_value);
-      }
+      tsdf_acc.setValue(voxel, new_tsdf_value);
     } else {
       // Reset the updated voxel
       updated_acc.setValueOff(voxel);
     }
     float new_var = variance_acc.getValue(voxel) + var_punish;
     if (new_var > 100.0f) {
+      // TODO: Decide, if we want to reset the tsdf value as well
       variance_acc.setValueOff(voxel);
     } else {
       variance_acc.setValue(voxel, std::max(min_var_, new_var));

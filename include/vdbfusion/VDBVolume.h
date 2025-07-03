@@ -74,8 +74,9 @@ class VDBVolume {
   [[nodiscard]] std::tuple<std::vector<Eigen::Vector3d>,
                            std::vector<Eigen::Vector3i>>
   ExtractTriangleMesh(bool fill_holes = true, float max_var = 0.5,
+                      float iso_level = 0.0f,
                       openvdb::FloatGrid::Ptr tsdf = nullptr,
-                      float iso_level = 0.0f) const;
+                      openvdb::FloatGrid::Ptr variance = nullptr) const;
 
   void PunishNotUpdatedVoxels();
 

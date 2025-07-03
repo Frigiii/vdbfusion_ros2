@@ -278,9 +278,9 @@ void vdbfusion_node::integratePointCloudCB(
     const auto& z = transform.transform.translation.z;
     auto origin = Eigen::Vector3d{x, y, z};
 
-    vdb_volume_->Integrate(
-        scan, origin,
-        [](float sdf) { return sdf < 0 ? 0.2 + sdf * sdf * 16 : 0.2; });
+    vdb_volume_->Integrate(scan, origin, [](float sdf) {
+      return sdf < 0 ? 0.2 + sdf * sdf * 16 : 0.2;
+    });
   }
 }
 
@@ -312,12 +312,12 @@ void vdbfusion_node::publishVolumeMesh() {
   auto header = std_msgs::msg::Header{};
   header.stamp = latest_pc_header_stamp_;
   header.frame_id = static_frame_id_;
-  auto mesh_marker = vdbLowerVolumetoMeshMarker(
-      *vdb_volume_, header, fill_holes_, max_var_, iso_level_);
+  auto mesh_marker = vdbLowerVolumetoMeshMarker(*vdb_volume_, header,
+                                                fill_holes_, 1e7, iso_level_);
   mesh_marker.ns = "lower_boundary_mesh";
   mesh_pub_->publish(mesh_marker);
   mesh_marker = vdbUpperVolumetoMeshMarker(*vdb_volume_, header, fill_holes_,
-                                           max_var_, iso_level_);
+                                           1e7, iso_level_);
   mesh_marker.ns = "upper_boundary_mesh";
   mesh_pub_->publish(mesh_marker);
 }

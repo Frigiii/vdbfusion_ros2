@@ -91,8 +91,7 @@ visualization_msgs::msg::Marker vdbVolumeToMeshMarker(
   marker.color.b = 0.0f;
   marker.color.a = 1.0f;
 
-  auto [vertices, triangles] =
-      volume.ExtractTriangleMesh(fill_holes, max_var);
+  auto [vertices, triangles] = volume.ExtractTriangleMesh(fill_holes, max_var);
   for (const auto& triangle : triangles) {
     for (int i = 0; i < 3; ++i) {
       geometry_msgs::msg::Point point;
@@ -125,8 +124,10 @@ visualization_msgs::msg::Marker vdbLowerVolumetoMeshMarker(
   marker.color.a = 0.5f;
 
   auto volume_ptr = volume.getVolumeExtractorVolumeLower();
+  auto variance_grid = openvdb::FloatGrid::create(1e6f);
+  variance_grid->setTransform(volume_ptr->transformPtr());
   auto [vertices, triangles] = volume.ExtractTriangleMesh(
-      fill_holes, max_var, volume_ptr, iso_level);
+      fill_holes, 1e7f, iso_level, volume_ptr, variance_grid);
   for (const auto& triangle : triangles) {
     for (int i = 0; i < 3; ++i) {
       geometry_msgs::msg::Point point;
@@ -159,8 +160,10 @@ visualization_msgs::msg::Marker vdbUpperVolumetoMeshMarker(
   marker.color.a = 0.5f;
 
   auto volume_ptr = volume.getVolumeExtractorVolumeUpper();
+  auto variance_grid = openvdb::FloatGrid::create(1e6f);
+  variance_grid->setTransform(volume_ptr->transformPtr());
   auto [vertices, triangles] = volume.ExtractTriangleMesh(
-      fill_holes, max_var, volume_ptr, iso_level);
+      fill_holes, max_var, iso_level, volume_ptr, variance_grid);
   for (const auto& triangle : triangles) {
     for (int i = 0; i < 3; ++i) {
       geometry_msgs::msg::Point point;

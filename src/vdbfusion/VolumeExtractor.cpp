@@ -37,19 +37,14 @@ namespace vdbfusion {
 void VolumeExtractor::updateVolume() {
   VDBFUSION_VOLUMEEXTRACTOR_ASSERT(tsdf_ && boundary_lower_ && boundary_upper_);
 
-  // Create a new extract volume if it does not exist. Same properties as tsdf_
-  if (!extract_volume_lower_) {
-    extract_volume_lower_ = openvdb::FloatGrid::create(tsdf_->background());
-    extract_volume_lower_->setTransform(tsdf_->transformPtr());
-  }
-  if (!extract_volume_upper_) {
-    extract_volume_upper_ = openvdb::FloatGrid::create(tsdf_->background());
-    extract_volume_upper_->setTransform(tsdf_->transformPtr());
-  }
-
-  // Clear the existing volume
-  extract_volume_lower_->clear();
-  extract_volume_upper_->clear();
+  // Create a new extract volume and store the pointers later on. Same
+  // properties as tsdf_
+  vdbfusion::GridPtr extract_volume_lower =
+      openvdb::FloatGrid::create(tsdf_->background());
+  extract_volume_lower->setTransform(tsdf_->transformPtr());
+  vdbfusion::GridPtr extract_volume_upper =
+      openvdb::FloatGrid::create(tsdf_->background());
+  extract_volume_upper->setTransform(tsdf_->transformPtr());
 
   // Create the intersection of the volume and boundary and calculate the volume
   // value
@@ -61,34 +56,44 @@ void VolumeExtractor::updateVolume() {
   auto tsdf_acc = tsdf_->getAccessor();
   auto boundary_lower_acc = boundary_lower_->getAccessor();
   auto boundary_upper_acc = boundary_upper_->getAccessor();
-  auto extract_volume_lower_acc = extract_volume_lower_->getAccessor();
-  auto extract_volume_upper_acc = extract_volume_upper_->getAccessor();
+  auto extract_volume_lower_acc = extract_volume_lower->getAccessor();
+  auto extract_volume_upper_acc = extract_volume_upper->getAccessor();
 
   for (auto iter = boundary_lower_->cbeginValueOn(); iter.test(); ++iter) {
     // Get the coordinate of the current voxel
     const openvdb::Coord& coord = iter.getCoord();
 
-    if (!tsdf_acc.isValueOn(coord)) continue;
-
+    const bool is_tsdf_on = tsdf_acc.isValueOn(coord);
     const float tsdf_value = tsdf_acc.getValue(coord);
 
     // Check if the coordinate is active in both grids
     if (boundary_lower_acc.isValueOn(coord)) {
-      // Get the values from both grids
       const float boundary_value = boundary_lower_acc.getValue(coord);
-      const float extract_value = std::max(tsdf_value, boundary_value);
 
-      if (extract_value < iso_level_) ++count_lower;
-      extract_volume_lower_acc.setValue(coord, extract_value);
+      if (!is_tsdf_on) {
+        // If the TSDF value is not on, we can only use the boundary value
+        if (boundary_value < iso_level_) ++count_lower;
+        extract_volume_lower_acc.setValue(coord, boundary_value);
+      } else {
+        // If both values are on, we take the maximum of both
+        const float extract_value = std::max(tsdf_value, boundary_value);
+        if (extract_value < iso_level_) ++count_lower;
+        extract_volume_lower_acc.setValue(coord, extract_value);
+      }
     }
 
     if (boundary_upper_acc.isValueOn(coord)) {
-      // Get the values from both grids
       const float boundary_value = boundary_upper_acc.getValue(coord);
-      const float extract_value = std::max(tsdf_value, boundary_value);
 
-      if (extract_value < iso_level_) ++count_upper;
-      extract_volume_upper_acc.setValue(coord, extract_value);
+      // If the TSDF value is not on, we can only use the boundary value
+      if (!is_tsdf_on) {
+        if (boundary_value < iso_level_) ++count_upper;
+        extract_volume_upper_acc.setValue(coord, boundary_value);
+      } else {
+        const float extract_value = std::max(tsdf_value, boundary_value);
+        if (extract_value < iso_level_) ++count_upper;
+        extract_volume_upper_acc.setValue(coord, extract_value);
+      }
     }
   }
 
@@ -97,13 +102,24 @@ void VolumeExtractor::updateVolume() {
     const openvdb::Coord& coord = iter.getCoord();
 
     // Skip if the coordinate is already processed
-    if (!extract_volume_upper_acc.isValueOn(coord) &&
-        tsdf_acc.isValueOn(coord) && boundary_upper_acc.isValueOn(coord)) {
-      const float tsdf_value = tsdf_acc.getValue(coord);
+    if (extract_volume_upper_acc.isValueOn(coord)) continue;
+
+    const bool is_tsdf_on = tsdf_acc.isValueOn(coord);
+    const float tsdf_value = tsdf_acc.getValue(coord);
+
+    // Skip if the coordinate is already processed
+    if (boundary_upper_acc.isValueOn(coord)) {
       const float boundary_value = boundary_upper_acc.getValue(coord);
-      const float extract_value = std::max(tsdf_value, boundary_value);
-      if (extract_value < iso_level_) ++count_upper;
-      extract_volume_upper_acc.setValue(coord, extract_value);
+
+      if (!is_tsdf_on) {
+        // If the TSDF value is not on, we can only use the boundary value
+        if (boundary_value < iso_level_) ++count_upper;
+        extract_volume_upper_acc.setValue(coord, boundary_value);
+      } else {
+        const float extract_value = std::max(tsdf_value, boundary_value);
+        if (extract_value < iso_level_) ++count_upper;
+        extract_volume_upper_acc.setValue(coord, extract_value);
+      }
     }
   }
 
@@ -111,6 +127,10 @@ void VolumeExtractor::updateVolume() {
                         voxel_size * voxel_size;  // Volume value
   volume_value_upper_ = static_cast<float>(count_upper) * voxel_size *
                         voxel_size * voxel_size;  // Volume value
+
+  // Store the extract volumes
+  extract_volume_lower_ = std::move(extract_volume_lower);
+  extract_volume_upper_ = std::move(extract_volume_upper);
 
   // The volume_value_ should be interpolated properly. This is just a very
   // stupid interpolation based on the lower volume.
