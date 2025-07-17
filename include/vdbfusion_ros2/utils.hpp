@@ -43,10 +43,11 @@ void preprocessScan(std::vector<Eigen::Vector3d>& scan, float min_range,
 // converts a VDBVolume to a visualization_msgs::msg::Marker message
 visualization_msgs::msg::Marker vdbVolumeToCubeMarker(
     vdbfusion::VDBVolume& volume, const std_msgs::msg::Header& header,
-    const float& max_var) {
+    const float& max_var, const float& iso_level = 0.0f) {
   auto marker = visualization_msgs::msg::Marker{};
   marker.header = header;
   marker.id = 0;
+  marker.ns = "vdbfusion_volume";
   marker.type = visualization_msgs::msg::Marker::CUBE_LIST;
   marker.action = visualization_msgs::msg::Marker::ADD;
   marker.pose.orientation.w = 1.0;
@@ -60,7 +61,7 @@ visualization_msgs::msg::Marker vdbVolumeToCubeMarker(
   auto variance_acc = volume.variance_->getConstAccessor();
   for (auto it = volume.tsdf_->beginValueOn(); it; ++it) {
     const openvdb::Coord& coord = it.getCoord();
-    if (it.getValue() > 0.0f || variance_acc.getValue(coord) > max_var) {
+    if (it.getValue() > iso_level || variance_acc.getValue(coord) > max_var) {
       continue;
     }
     geometry_msgs::msg::Point point;
@@ -70,6 +71,76 @@ visualization_msgs::msg::Marker vdbVolumeToCubeMarker(
     marker.points.push_back(point);
   }
 
+  return marker;
+}
+
+visualization_msgs::msg::Marker vdbLowerVolumeToCubeMarker(
+    vdbfusion::VDBVolume& volume, const std_msgs::msg::Header& header,
+    const float& max_var, const float& iso_level = 0.0f) {
+  auto marker = visualization_msgs::msg::Marker{};
+  marker.header = header;
+  marker.id = 0;
+  marker.ns = "vdbfusion_lower_volume";
+  marker.type = visualization_msgs::msg::Marker::CUBE_LIST;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  marker.pose.orientation.w = 1.0;
+  marker.scale.x = marker.scale.y = marker.scale.z = volume.voxel_size_;
+  // default color is green
+  marker.color.r = 0.0f;
+  marker.color.g = 0.0f;
+  marker.color.b = 1.0f;
+  marker.color.a = 0.5f;
+
+  auto volume_ptr = volume.getVolumeExtractorVolumeLower();
+  auto volume_acc = volume_ptr->getConstAccessor();
+  auto variance_acc = volume.variance_->getConstAccessor();
+
+  for (auto it = volume_ptr->beginValueOn(); it; ++it) {
+    const openvdb::Coord& coord = it.getCoord();
+    if (it.getValue() > iso_level || variance_acc.getValue(coord) > max_var) {
+      continue;
+    }
+    geometry_msgs::msg::Point point;
+    point.x = coord.x() * volume.voxel_size_;
+    point.y = coord.y() * volume.voxel_size_;
+    point.z = coord.z() * volume.voxel_size_;
+    marker.points.push_back(point);
+  }
+  return marker;
+}
+
+visualization_msgs::msg::Marker vdbUpperVolumeToCubeMarker(
+    vdbfusion::VDBVolume& volume, const std_msgs::msg::Header& header,
+    const float& max_var, const float& iso_level = 0.0f) {
+  auto marker = visualization_msgs::msg::Marker{};
+  marker.header = header;
+  marker.id = 0;
+  marker.ns = "vdbfusion_upper_volume";
+  marker.type = visualization_msgs::msg::Marker::CUBE_LIST;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  marker.pose.orientation.w = 1.0;
+  marker.scale.x = marker.scale.y = marker.scale.z = volume.voxel_size_;
+  // default color is green
+  marker.color.r = 1.0f;
+  marker.color.g = 0.0f;
+  marker.color.b = 0.0f;
+  marker.color.a = 0.5f;
+
+  auto volume_ptr = volume.getVolumeExtractorVolumeUpper();
+  auto volume_acc = volume_ptr->getConstAccessor();
+  auto variance_acc = volume.variance_->getConstAccessor();
+
+  for (auto it = volume_ptr->beginValueOn(); it; ++it) {
+    const openvdb::Coord& coord = it.getCoord();
+    if (it.getValue() > iso_level || variance_acc.getValue(coord) > max_var) {
+      continue;
+    }
+    geometry_msgs::msg::Point point;
+    point.x = coord.x() * volume.voxel_size_;
+    point.y = coord.y() * volume.voxel_size_;
+    point.z = coord.z() * volume.voxel_size_;
+    marker.points.push_back(point);
+  }
   return marker;
 }
 

@@ -33,6 +33,7 @@ class vdbfusion_node : public rclcpp::Node {
 
   void publishVolumeMesh();
   void publishVolumeValue();
+  void publishVolumeTsdf();
 
   void publishTSDF();
   void publishMesh();

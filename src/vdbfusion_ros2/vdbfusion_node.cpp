@@ -322,13 +322,31 @@ void vdbfusion_node::publishVolumeMesh() {
   mesh_pub_->publish(mesh_marker);
 }
 
-void vdbfusion_node::publishTSDF() {
+void vdbfusion_node::publishVolumeTsdf() {
   auto header = std_msgs::msg::Header{};
   header.stamp = latest_pc_header_stamp_;
   header.frame_id = static_frame_id_;
   auto tsdf_marker = vdbVolumeToCubeMarker(*vdb_volume_, header, max_var_);
-
+  tsdf_marker.ns = "tsdf_volume";
   tsdf_pub_->publish(tsdf_marker);
+}
+
+void vdbfusion_node::publishTSDF() {
+  auto header = std_msgs::msg::Header{};
+  header.stamp = latest_pc_header_stamp_;
+  header.frame_id = static_frame_id_;
+  try {
+    auto tsdf_marker = vdbVolumeToCubeMarker(*vdb_volume_, header, max_var_);
+    tsdf_pub_->publish(tsdf_marker);
+    tsdf_marker = vdbLowerVolumeToCubeMarker(*vdb_volume_, header, max_var_, iso_level_);
+    tsdf_pub_->publish(tsdf_marker);
+    tsdf_marker = vdbUpperVolumeToCubeMarker(*vdb_volume_, header, max_var_, iso_level_);
+    tsdf_pub_->publish(tsdf_marker);
+  } catch (const std::exception& e) {
+    RCLCPP_ERROR(get_logger(), "Error publishing TSDF: %s", e.what());
+  } catch (...) {
+    RCLCPP_ERROR(get_logger(), "Unknown error occurred while publishing TSDF");
+  }
 }
 
 void vdbfusion_node::publishMesh() {
