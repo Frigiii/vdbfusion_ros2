@@ -279,7 +279,7 @@ void vdbfusion_node::integratePointCloudCB(
     auto origin = Eigen::Vector3d{x, y, z};
 
     vdb_volume_->Integrate(scan, origin, [](float sdf) {
-      return sdf < 0 ? 0.2 + sdf * sdf * 16 : 0.2;
+      return sdf < 0 ? 0.2 + sdf * sdf * 36 : 0.2;
     });
   }
 }

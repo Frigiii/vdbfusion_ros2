@@ -1,4 +1,5 @@
 #include <openvdb/openvdb.h>
+#include <openvdb/tools/MeshToVolume.h>
 
 #include <Eigen/Core>
 #include <memory>
@@ -80,6 +81,26 @@ class VolumeExtractor {
                         const std::string& upper_boundary_mesh) {
     loadBoundaryMesh(lower_boundary_mesh, boundary_lower_, "lower_boundary");
     loadBoundaryMesh(upper_boundary_mesh, boundary_upper_, "upper_boundary");
+  }
+
+  bool loadObjMesh(const std::string& mesh_path, GridPtr& boundary,
+                   std::string name = "boundary");
+  bool loadStlMesh(const std::string& mesh_path, GridPtr& boundary,
+                   std::string name = "boundary");
+  inline void meshToGrid(const std::vector<openvdb::Vec3s>& boundary_points,
+                         const std::vector<openvdb::Vec3I>& boundary_triangles,
+                         const std::vector<openvdb::Vec4I>& boundary_quads,
+                         GridPtr& boundary, std::string& name) const {
+    VDBFUSION_VOLUMEEXTRACTOR_ASSERT(tsdf_);
+    auto xform = tsdf_->transform();
+    std::cout << "Converting mesh to grid with " << boundary_points.size()
+              << " points, " << boundary_triangles.size() << " triangles, and "
+              << boundary_quads.size() << " quads." << std::endl;
+
+    boundary = openvdb::tools::meshToSignedDistanceField<GridType>(
+        xform, boundary_points, boundary_triangles, boundary_quads, 3, 500);
+    boundary->setName(name);
+    boundary->setTransform(tsdf_->transformPtr());
   }
 
  private:

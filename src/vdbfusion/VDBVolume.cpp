@@ -103,8 +103,14 @@ void VDBVolume::UpdateTSDF(
     const float new_var = (1 / (1 / prior_var + 1 / obs_var));
     const float new_tsdf =
         (obs_var * prior_tsdf + prior_var * obs_tsdf) / (obs_var + prior_var);
-    tsdf_acc.setValue(voxel, new_tsdf);
-    variance_acc.setValue(voxel, std::max(min_var_, new_var));
+    if (new_tsdf < sdf_trunc_) {
+      // Update the TSDF and variance values
+      tsdf_acc.setValue(voxel, new_tsdf);
+      variance_acc.setValue(voxel, std::max(min_var_, new_var));
+    } else {
+      tsdf_acc.setValueOff(voxel);
+      variance_acc.setValueOff(voxel);
+    }
   }
 }
 
@@ -166,9 +172,16 @@ void VDBVolume::Integrate(
         const float new_var = (1 / (1 / prior_var + 1 / obs_var));
         const float new_tsdf = (obs_var * prior_tsdf + prior_var * obs_tsdf) /
                                (obs_var + prior_var);
-        tsdf_acc.setValue(voxel, new_tsdf);
-        variance_acc.setValue(voxel, std::max(min_var_, new_var));
-        updated_acc.setValue(voxel, true);
+        if (new_tsdf < sdf_trunc_) {
+          // Update the TSDF and variance values
+          tsdf_acc.setValue(voxel, new_tsdf);
+          variance_acc.setValue(voxel, std::max(min_var_, new_var));
+          updated_acc.setValue(voxel, true);
+        } else {
+          tsdf_acc.setValueOff(voxel);
+          variance_acc.setValueOff(voxel);
+          updated_acc.setValueOff(voxel);
+        }
       }
     } while (dda.step());
   });

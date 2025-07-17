@@ -21,8 +21,8 @@
 // SOFTWARE.
 
 #include <openvdb/openvdb.h>
-#include <openvdb/tools/MeshToVolume.h>
 #define TINYOBJLOADER_IMPLEMENTATION
+#include <stl_reader.h>
 #include <tiny_obj_loader.h>
 
 #include <Eigen/Core>
@@ -67,33 +67,18 @@ void VolumeExtractor::updateVolume() {
     const float tsdf_value = tsdf_acc.getValue(coord);
 
     // Check if the coordinate is active in both grids
-    if (boundary_lower_acc.isValueOn(coord)) {
+    if (is_tsdf_on && boundary_lower_acc.isValueOn(coord)) {
       const float boundary_value = boundary_lower_acc.getValue(coord);
-
-      if (!is_tsdf_on) {
-        // If the TSDF value is not on, we can only use the boundary value
-        if (boundary_value < iso_level_) ++count_lower;
-        extract_volume_lower_acc.setValue(coord, boundary_value);
-      } else {
-        // If both values are on, we take the maximum of both
-        const float extract_value = std::max(tsdf_value, boundary_value);
-        if (extract_value < iso_level_) ++count_lower;
-        extract_volume_lower_acc.setValue(coord, extract_value);
-      }
+      const float extract_value = std::max(tsdf_value, boundary_value);
+      if (extract_value < iso_level_) ++count_lower;
+      extract_volume_lower_acc.setValue(coord, extract_value);
     }
 
-    if (boundary_upper_acc.isValueOn(coord)) {
+    if (is_tsdf_on && boundary_upper_acc.isValueOn(coord)) {
       const float boundary_value = boundary_upper_acc.getValue(coord);
-
-      // If the TSDF value is not on, we can only use the boundary value
-      if (!is_tsdf_on) {
-        if (boundary_value < iso_level_) ++count_upper;
-        extract_volume_upper_acc.setValue(coord, boundary_value);
-      } else {
-        const float extract_value = std::max(tsdf_value, boundary_value);
-        if (extract_value < iso_level_) ++count_upper;
-        extract_volume_upper_acc.setValue(coord, extract_value);
-      }
+      const float extract_value = std::max(tsdf_value, boundary_value);
+      if (extract_value < iso_level_) ++count_upper;
+      extract_volume_upper_acc.setValue(coord, extract_value);
     }
   }
 
@@ -108,18 +93,11 @@ void VolumeExtractor::updateVolume() {
     const float tsdf_value = tsdf_acc.getValue(coord);
 
     // Skip if the coordinate is already processed
-    if (boundary_upper_acc.isValueOn(coord)) {
+    if (is_tsdf_on && boundary_upper_acc.isValueOn(coord)) {
       const float boundary_value = boundary_upper_acc.getValue(coord);
-
-      if (!is_tsdf_on) {
-        // If the TSDF value is not on, we can only use the boundary value
-        if (boundary_value < iso_level_) ++count_upper;
-        extract_volume_upper_acc.setValue(coord, boundary_value);
-      } else {
-        const float extract_value = std::max(tsdf_value, boundary_value);
-        if (extract_value < iso_level_) ++count_upper;
-        extract_volume_upper_acc.setValue(coord, extract_value);
-      }
+      const float extract_value = std::max(tsdf_value, boundary_value);
+      if (extract_value < iso_level_) ++count_upper;
+      extract_volume_upper_acc.setValue(coord, extract_value);
     }
   }
 
@@ -155,8 +133,67 @@ void VolumeExtractor::loadBoundaryMesh(const std::string& boundary_mesh,
                                        GridPtr& boundary, std::string name) {
   VDBFUSION_VOLUMEEXTRACTOR_ASSERT(!boundary_mesh.empty() &&
                                    std::filesystem::exists(boundary_mesh));
+  if (boundary_mesh.substr(boundary_mesh.find_last_of(".") + 1) == "stl") {
+    if (!loadStlMesh(boundary_mesh, boundary, name)) {
+      std::cerr << "Failed to load STL mesh: " << boundary_mesh << std::endl;
+    }
+  } else if (boundary_mesh.substr(boundary_mesh.find_last_of(".") + 1) ==
+             "obj") {
+    if (!loadObjMesh(boundary_mesh, boundary, name)) {
+      std::cerr << "Failed to load OBJ mesh: " << boundary_mesh << std::endl;
+    }
+  } else {
+    std::cerr << "Unsupported mesh format: " << boundary_mesh << std::endl;
+  }
+}
+
+bool VolumeExtractor::loadStlMesh(const std::string& mesh_path,
+                                  GridPtr& boundary, std::string name) {
+  VDBFUSION_VOLUMEEXTRACTOR_ASSERT(!mesh_path.empty() &&
+                                   std::filesystem::exists(mesh_path));
+  try {
+    stl_reader::StlMesh<float, unsigned int> mesh(mesh_path);
+
+    std::vector<openvdb::Vec3s> boundary_points;
+    std::vector<openvdb::Vec3I> boundary_triangles;
+    std::vector<openvdb::Vec4I> boundary_quads;
+
+    // Fill points
+    for (size_t iv = 0; iv < mesh.num_vrts(); ++iv) {
+      const float* coords = mesh.vrt_coords(iv);
+      boundary_points.emplace_back(
+          openvdb::Vec3s(coords[0], coords[1], coords[2]));
+    }
+
+    // Fill triangles
+    for (size_t itri = 0; itri < mesh.num_tris(); ++itri) {
+      const unsigned int* v = mesh.tri_corner_inds(itri);
+      boundary_triangles.emplace_back(openvdb::Vec3I(v[0], v[1], v[2]));
+    }
+
+    ///////////////////////////////////
+    // Convert the mesh to a VDB SDF //
+    ///////////////////////////////////
+
+    meshToGrid(boundary_points, boundary_triangles, boundary_quads, boundary,
+               name);
+
+    return true;
+
+  } catch (std::exception& e) {
+    std::cerr << "Error while loading STL mesh: " << e.what() << std::endl;
+    return false;
+  }
+}
+
+bool VolumeExtractor::loadObjMesh(const std::string& mesh_path,
+                                  GridPtr& boundary, std::string name) {
+  VDBFUSION_VOLUMEEXTRACTOR_ASSERT(!mesh_path.empty() &&
+                                   std::filesystem::exists(mesh_path));
   // Load the boundary mesh using tinyobjloader. Convert the mesh to a VDB SDF
   // and store it in the boundary member variable
+
+  std::cout << "Loading boundary mesh: " << mesh_path << std::endl;
 
   std::vector<openvdb::Vec3s> boundary_points;
   std::vector<openvdb::Vec3I> boundary_triangles;
@@ -169,21 +206,22 @@ void VolumeExtractor::loadBoundaryMesh(const std::string& boundary_mesh,
   tinyobj::ObjReaderConfig reader_config;
   tinyobj::ObjReader reader;
 
-  if (!reader.ParseFromFile(boundary_mesh, reader_config)) {
-    throw std::runtime_error("Failed to parse boundary mesh: " +
-                             reader.Error());
+  if (!reader.ParseFromFile(mesh_path, reader_config)) {
+    std::cerr << "Failed to parse boundary mesh: " + reader.Error();
+    return false;
   }
 
   if (!reader.Warning().empty()) {
     std::cerr << "Warning while loading boundary mesh: " << reader.Warning()
               << std::endl;
+    return false;
   }
 
   auto& attrib = reader.GetAttrib();
   auto& shapes = reader.GetShapes();
   auto& materials = reader.GetMaterials();
 
-  std::cout << "Loaded boundary mesh: " << boundary_mesh << std::endl;
+  std::cout << "Loaded boundary mesh: " << mesh_path << std::endl;
   std::cout << "Number of vertices: " << attrib.vertices.size() / 3
             << std::endl;
   std::cout << "Number of shapes: " << shapes.size() << std::endl;
@@ -230,27 +268,9 @@ void VolumeExtractor::loadBoundaryMesh(const std::string& boundary_mesh,
   // Convert the mesh to a VDB SDF //
   ///////////////////////////////////
 
-  auto xform = tsdf_->transform();
+  meshToGrid(boundary_points, boundary_triangles, boundary_quads, boundary,
+             name);
 
-  // Typical values for exBandWidth and inBandWidth are 3.0 to 5.0 times the
-  // voxel size. To have the SDF filled on the inside and empty on the
-  // outside, set inBandWidth large enough to cover the interior. Example:
-  // const float voxel_size = xform.voxelSize()[0];
-  // float exBandWidth = 3.0f * voxel_size;  // exterior narrow band width
-  // float inBandWidth = 500.0f * voxel_size;  // interior narrow band width$
-
-  std::cout << "Converting boundary mesh to VDB SDF..." << std::endl;
-  std::cout << "Number of boundary points: " << boundary_points.size()
-            << std::endl;
-  std::cout << "Number of boundary triangles: " << boundary_triangles.size()
-            << std::endl;
-  std::cout << "Number of boundary quads: " << boundary_quads.size()
-            << std::endl;
-
-  boundary = openvdb::tools::meshToSignedDistanceField<GridType>(
-      xform, boundary_points, boundary_triangles, boundary_quads, 3, 500);
-
-  boundary->setName(name);
-  boundary->setTransform(tsdf_->transformPtr());
+  return true;
 }
 }  // namespace vdbfusion
